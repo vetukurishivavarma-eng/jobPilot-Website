@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: jobpilot-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/jobpilot}
+    username: ${DATABASE_USER:jobpilot}
+    password: ${DATABASE_PASSWORD:jobpilot}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+jobpilot:
+  # Required. At least 32 characters. Generate one: openssl rand -base64 48
+  jwt-secret: ${JWT_SECRET}
+  jwt-ttl-hours: ${JWT_TTL_HOURS:24}
+  storage-dir: ${STORAGE_DIR:./data/resumes}
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173}
