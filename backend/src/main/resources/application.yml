@@ -9,6 +9,10 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+  task:
+    scheduling:
+      pool:
+        size: 2   # discovery and auto mode must not wait on each other
   servlet:
     multipart:
       max-file-size: 5MB
@@ -38,5 +42,7 @@ jobpilot:
   # Local LLM used by the apply agent for open-ended questions ("Why do you want to join?"). Optional.
   ollama-url: ${OLLAMA_URL:http://localhost:11434}
   ollama-model: ${OLLAMA_MODEL:qwen2.5:3b-instruct}
+  # Auto mode runs for users who switched it on (Spring cron; "-" disables).
+  auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}
   # Test mode for the apply agent: forms are filled but nothing is ever sent to the employer.
   apply-dry-run: ${APPLY_DRY_RUN:false}

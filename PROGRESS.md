@@ -1,6 +1,6 @@
 # JobPilot AI — Progress
 
-## RESUME HERE (2026-11-08, apply agent steps 1–2 done; product plan in docs/PRODUCT.md)
+## RESUME HERE (2026-11-08, apply agent + match score + auto mode done; plan in docs/PRODUCT.md)
 
 **Phases 1 and 2 are done. The apply agent (Phase 5) is in progress**, at the user's request, ahead of Phases 3 and 4.
 19 backend tests pass and the frontend builds.
@@ -26,9 +26,17 @@
 - `APPLY_DRY_RUN=true` aborts every non-GET request to greenhouse.io/lever.co (each one is logged). **Live dry runs passed:** Meesho (Lever) and Groww (Greenhouse, twice) had every field correct, including resume, dropdowns, location and phone country. Dry-run blocked only Lever's parseResume and a Cloudflare ping; Greenhouse sent nothing.
 - To close the agent's window from a script: kill the chrome.exe processes whose command line contains `browser-profile`.
 
+### Match score + auto mode, DONE
+- `job/MatchScorer` (pure, `MatchScorerTest`): skills 40 (profile skills plus skills JdParser finds in the primary resume; ~70% of listed skills counts as full), experience 25 (minYears, or a seniority default), role 15 (RoleMatch on desired roles), location 15 (city aliases, remote, relocation scores half), salary 5 (stated, same currency only). Unknown parts are left out of the denominator. Reasons come back in `good`/`gaps`.
+- `GET /api/jobs?sort=match` scores the whole list in memory (ponytail note). Every JobDto carries `match`.
+- Auto mode: `AutoApplyService` + `auto_apply_settings` (V5; also `applications.auto`). Each run picks open Greenhouse/Lever jobs with no application and score ≥ min, best first, up to the remaining daily limit; prepares them (the answer bank fills repeat questions); if `autoSubmit`, fills and presses Submit one window at a time (`BrowserFiller.submit`: click, wait 45s for confirmation; on a visible hCaptcha/reCAPTCHA/Cloudflare challenge or no confirmation, hand over with a note and wait for the user). Handed-over apps get `auto=false` so runs don't reopen them. Cron `AUTO_APPLY_CRON` every 15 min; scheduler pool size 2.
+- `GET/PUT /api/auto-apply`, `POST /api/auto-apply/run` (async; poll GET). UI: Auto mode panel (on, min-score slider, daily limit, "Submit for me", Run now, last-run summary), "auto" tag, match badge + reasons, Best match/Newest sort.
+- **Dry run now blocks ALL non-GET requests** (since auto mode presses Submit). Live run on Groww: prepared the best match, waited for 3 answers, then on the next run filled, pressed Submit, didn't get confirmation (the resume upload to S3 was blocked, so the form refused) and handed over correctly. The second job reused the answers and came out READY immediately.
+- Not visually checked: the Chrome window was minimized (viewport 0x0) at the end. Builds and typechecks.
+
 ### NEXT
-1. **First real application**: the user picks a job they actually want and applies with their real profile (APPLY_DRY_RUN off). Watch for confirmation detection on the real thank-you page.
-2. Auto mode (roadmap step 7) after a few real ones; then match score (roadmap step 2), per docs/PRODUCT.md.
+1. **First real application** with the user's real profile (APPLY_DRY_RUN off). Confirm detection on a real thank-you page.
+2. Roadmap step 3: tailored resume and cover letter per job (facts only, shown as a diff).
 
 ### Phase 2 facts worth remembering
 - Live numbers: Databricks board has 922 jobs; 39 matched "Backend Engineer, Data Scientist". The first full sync takes ~23s, re-runs ~13s.

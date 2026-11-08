@@ -29,14 +29,15 @@ export default function JobsPage() {
   const [query, setQuery] = useState('')
   const [includeClosed, setIncludeClosed] = useState(false)
   const [page, setPage] = useState(0)
+  const [sort, setSort] = useState<'recent' | 'match'>('match')
   const [data, setData] = useState<JobPage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [report, setReport] = useState<SourceResult[] | null>(null)
   const [adding, setAdding] = useState(false)
 
-  const refresh = () => api.listJobs({ status, q: query, includeClosed, page }).then(setData).catch(e => setError(msg(e)))
-  useEffect(() => { refresh() }, [status, query, includeClosed, page])
+  const refresh = () => api.listJobs({ status, q: query, includeClosed, page, sort }).then(setData).catch(e => setError(msg(e)))
+  useEffect(() => { refresh() }, [status, query, includeClosed, page, sort])
 
   async function find() {
     setRunning(true)
@@ -78,6 +79,10 @@ export default function JobsPage() {
         <form className="flex min-w-48 flex-1 gap-2" onSubmit={e => { e.preventDefault(); setQuery(q); setPage(0) }}>
           <input className="field" placeholder="Search title or company" value={q} onChange={e => setQ(e.target.value)} aria-label="Search jobs" />
         </form>
+        <select className="field w-auto" value={sort} aria-label="Sort jobs" onChange={e => { setSort(e.target.value as 'recent' | 'match'); setPage(0) }}>
+          <option value="match">Best match</option>
+          <option value="recent">Newest</option>
+        </select>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={includeClosed} onChange={e => { setIncludeClosed(e.target.checked); setPage(0) }} />
           Show closed
@@ -168,6 +173,7 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
   return (
     <li className={`card ${j.closedAt ? 'opacity-60' : ''}`}>
       <div className="flex flex-wrap items-start gap-3">
+        {j.match?.score != null && <ScoreBadge score={j.match.score} />}
         <div className="min-w-0 flex-1">
           <button className="text-left font-display text-lg font-bold leading-snug hover:text-signal" onClick={toggle} aria-expanded={open}>
             {j.title}
@@ -211,6 +217,12 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
         <div className="mt-4 border-t border-line pt-4">
           {err ? <p className="text-sm text-danger">{err}</p> : !detail ? <p className="text-sm text-muted">Loading…</p> : (
             <>
+              {j.match && (j.match.good.length > 0 || j.match.gaps.length > 0) && (
+                <div className="mb-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <ul className="space-y-1">{j.match.good.map(g => <li key={g}><span className="text-signal">✓</span> {g}</li>)}</ul>
+                  <ul className="space-y-1">{j.match.gaps.map(g => <li key={g}><span className="text-amber-700">!</span> {g}</li>)}</ul>
+                </div>
+              )}
               <p className="mb-2 text-xs text-muted">
                 Requirements above are read from the posting automatically and may miss things. Check the original before applying.
                 {j.source === 'adzuna' && ' Adzuna only shares a short snippet; open the original for the full description.'}
@@ -287,5 +299,15 @@ function AddJob({ onAdded }: { onAdded: () => void }) {
       {err && !err.fields && <p role="alert" className="text-sm text-danger">{err.message}</p>}
       <button className="btn" disabled={busy}>{busy ? 'Adding…' : 'Add job'}</button>
     </form>
+  )
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const tone = score >= 75 ? 'border-signal text-signal' : score >= 50 ? 'border-amber-500 text-amber-700' : 'border-line text-muted'
+  return (
+    <div className={`flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-full border-2 ${tone}`} title="How well this job fits your profile">
+      <span className="font-display text-base font-bold leading-none">{score}</span>
+      <span className="text-[9px] uppercase tracking-wide">match</span>
+    </div>
   )
 }

@@ -26,6 +26,8 @@ public class UserJob {
 
     protected UserJob() {}
 
+    public Job job() { return job; }
+
     UserJob(UUID userId, Job job, Origin origin) {
         this.userId = userId;
         this.job = job;

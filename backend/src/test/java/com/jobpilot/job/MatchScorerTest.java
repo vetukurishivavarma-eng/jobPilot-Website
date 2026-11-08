@@ -1,0 +1,66 @@
+package com.jobpilot.job;
+
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class MatchScorerTest {
+    static final MatchScorer.Candidate ASHA = new MatchScorer.Candidate(Set.of("Java", "Spring Boot", "PostgreSQL", "Kafka"),
+            new BigDecimal("4"), List.of("Backend Engineer"), List.of("Bengaluru"), false, 2_400_000L, "INR");
+
+    static MatchScorer.JobFacts job(String title, List<String> skills, Integer years, String location, String workplace) {
+        return new MatchScorer.JobFacts(title, skills, years, null, location, workplace, null, null);
+    }
+
+    @Test
+    void strongMatchScoresHighWithReasons() {
+        MatchScorer.Match m = MatchScorer.score(ASHA, job("Senior Backend Engineer", List.of("Java", "Spring Boot", "Kafka", "AWS"), 3, "Bangalore, India", null));
+        assertTrue(m.score() >= 95, "score " + m.score());
+        assertTrue(m.good().stream().anyMatch(g -> g.contains("Java")));
+        assertTrue(m.gaps().stream().anyMatch(g -> g.contains("AWS")), "missing skill is named: " + m.gaps());
+        assertTrue(m.good().contains("In a location you want"), "Bangalore = Bengaluru");
+    }
+
+    @Test
+    void weakMatchScoresLowAndSaysWhy() {
+        MatchScorer.Match m = MatchScorer.score(ASHA, job("Data Scientist", List.of("Python", "Machine Learning", "SQL"), 8, "Mountain View, California", null));
+        assertTrue(m.score() <= 25, "score " + m.score());
+        assertTrue(m.gaps().contains("Needs 8+ years; you have 4"));
+        assertTrue(m.gaps().contains("Not one of your desired roles"));
+        assertTrue(m.gaps().contains("Outside your locations"));
+    }
+
+    @Test
+    void unknownPartsAreLeftOutNotPenalised() {
+        // only skills are known: a full skills match is 100, not 40
+        MatchScorer.Candidate skillsOnly = new MatchScorer.Candidate(Set.of("Java"), null, List.of(), List.of(), false, null, null);
+        assertEquals(100, MatchScorer.score(skillsOnly, job("Anything", List.of("Java"), null, null, null)).score());
+        assertNull(MatchScorer.score(skillsOnly, job("Anything", List.of(), null, null, null)).score(), "nothing to compare");
+    }
+
+    @Test
+    void remoteRelocationSalaryAndSeniority() {
+        assertTrue(MatchScorer.score(ASHA, job("Backend Engineer", List.of("Java"), 2, "Anywhere", "REMOTE")).good().contains("Remote"));
+        MatchScorer.Candidate mover = new MatchScorer.Candidate(Set.of("Java"), new BigDecimal(4), List.of(), List.of("Pune"), true, null, null);
+        MatchScorer.Match m = MatchScorer.score(mover, job("X", List.of("Java"), null, "Hyderabad", null));
+        assertEquals((int) Math.round(100 * (40 + 7.5) / 55.0), m.score());
+        // seniority implies years when the posting doesn't state them
+        MatchScorer.Match lead = MatchScorer.score(ASHA, new MatchScorer.JobFacts("Staff Engineer", List.of(), null, "LEAD", null, null, null, null));
+        assertTrue(lead.gaps().contains("Needs 8+ years; you have 4"));
+        // salary only counts when stated in the same currency
+        MatchScorer.Match low = MatchScorer.score(ASHA, new MatchScorer.JobFacts("Backend Engineer", List.of(), null, null, null, null, 1_200_000L, "INR"));
+        assertTrue(low.gaps().contains("Top of the stated range is below your expectation"));
+        assertTrue(MatchScorer.score(ASHA, new MatchScorer.JobFacts("Backend Engineer", List.of(), null, null, null, null, 100_000L, "USD")).gaps().isEmpty());
+    }
+
+    @Test
+    void cityAliases() {
+        assertTrue(MatchScorer.sameCity("gurgaon, haryana", "Gurugram"));
+        assertTrue(MatchScorer.sameCity("bengaluru-vtp, india", "Bangalore"));
+        assertFalse(MatchScorer.sameCity("chennai", "Bengaluru"));
+    }
+}

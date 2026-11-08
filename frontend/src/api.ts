@@ -32,6 +32,7 @@ export type Job = {
   postedAt: string | null; discoveredAt: string; closedAt: string | null; status: JobStatus; origin: 'COMPANY' | 'SEARCH' | 'IMPORT'
   skills: string[]; minYears: number | null; seniority: string | null; educationLevel: string | null
   description: string | null
+  match: { score: number | null; good: string[]; gaps: string[] } | null
 }
 export type JobPage = { items: Job[]; total: number; page: number; size: number }
 export type SourceResult = { source: 'company' | 'adzuna'; label: string; fetched: number; linked: number; error: string | null }
@@ -47,8 +48,17 @@ export type FormField = {
 export type ApplicationStatus = 'NEEDS_INPUT' | 'READY' | 'FILLING' | 'SUBMITTED' | 'FAILED'
 export type Application = {
   id: string; jobId: string; jobTitle: string | null; company: string | null; jobUrl: string | null
-  status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null; hasScreenshot: boolean
+  status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null; hasScreenshot: boolean; auto: boolean
   createdAt: string; updatedAt: string; submittedAt: string | null
+}
+
+export type AutoSummary = {
+  at: string; considered: number; prepared: number; needYourAnswers: number; submitted: number; waitingForYou: number
+  failed: number; notes: string[]
+}
+export type AutoSettings = {
+  enabled: boolean; autoSubmit: boolean; minScore: number; dailyLimit: number
+  running: boolean; submittedToday: number; lastRunAt: string | null; lastSummary: AutoSummary | null
 }
 
 export class ApiError extends Error {
@@ -100,7 +110,7 @@ export const api = {
   updateResume: (id: string, patch: { label?: string; primary?: boolean }) => request<Resume>('PATCH', `/resumes/${id}`, patch),
   deleteResume: (id: string) => request<void>('DELETE', `/resumes/${id}`),
 
-  listJobs: (q: { status: string; q: string; includeClosed: boolean; page: number }) =>
+  listJobs: (q: { status: string; q: string; includeClosed: boolean; page: number; sort: string }) =>
     request<JobPage>('GET', '/jobs?' + new URLSearchParams({ ...q, includeClosed: String(q.includeClosed), page: String(q.page), size: '20' })),
   getJob: (id: string) => request<Job>('GET', `/jobs/${id}`),
   setJobStatus: (id: string, status: JobStatus) => request<Job>('PATCH', `/jobs/${id}`, { status }),
@@ -119,6 +129,9 @@ export const api = {
   createApplication: (jobId: string) => request<Application>('POST', '/applications', { jobId }),
   saveAnswers: (id: string, answers: Record<string, string>) => request<Application>('PUT', `/applications/${id}/answers`, { answers }),
   deleteApplication: (id: string) => request<void>('DELETE', `/applications/${id}`),
+  getAuto: () => request<AutoSettings>('GET', '/auto-apply'),
+  saveAuto: (s: Pick<AutoSettings, 'enabled' | 'autoSubmit' | 'minScore' | 'dailyLimit'>) => request<AutoSettings>('PUT', '/auto-apply', s),
+  runAuto: () => request<AutoSettings>('POST', '/auto-apply/run'),
   fillApplication: (id: string) => request<Application>('POST', `/applications/${id}/fill`),
   /** Authenticated image: fetched as a blob, shown via an object URL. */
   screenshotUrl: async (id: string) => {

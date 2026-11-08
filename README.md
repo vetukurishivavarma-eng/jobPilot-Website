@@ -57,6 +57,7 @@ export JWT_SECRET="$(openssl rand -base64 48)"   # PowerShell: $env:JWT_SECRET =
 | `ADZUNA_COUNTRY` | `in` | Adzuna country code |
 | `OLLAMA_URL` / `OLLAMA_MODEL` | `http://localhost:11434` / `qwen2.5:3b-instruct` | local LLM for open-ended application answers; optional |
 | `APPLY_DRY_RUN` | `false` | test mode: the agent fills forms but every POST to Greenhouse/Lever is blocked, so nothing reaches an employer |
+| `AUTO_APPLY_CRON` | `0 */15 * * * *` | auto-mode runs for users who switched it on (`-` disables) |
 | `DISCOVERY_CRON` | `0 0 */6 * * *` | background discovery for all users (Spring cron, `-` disables) |
 
 Health check: `GET /actuator/health`.

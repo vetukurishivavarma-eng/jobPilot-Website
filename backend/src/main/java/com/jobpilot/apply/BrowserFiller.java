@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,9 +39,15 @@ public class BrowserFiller {
             "thank you for applying|application (has been )?(submitted|received)|thanks for applying|we('ve| have) received your application",
             Pattern.CASE_INSENSITIVE);
 
-    public record Session(Application app, String url, List<FormField> fields, Path resume, Path screenshot) {}
-    /** What happened, reported back to the caller on the browser thread. */
+    /** @param autoSubmit press the site's Submit button when every field is filled (auto mode) */
+    public record Session(String url, List<FormField> fields, Path resume, Path screenshot, boolean autoSubmit) {}
+    /** How a session ended: SUBMITTED, CLOSED, TIMEOUT or FAILED. */
     public record Report(String outcome, List<String> notFilled, String error) {}
+
+    /** A visible CAPTCHA challenge (not the invisible checkbox badge). */
+    static final String CAPTCHA_CHALLENGE = "iframe[src*='hcaptcha.com'][src*='challenge'], iframe[title*='hCaptcha challenge' i], "
+            + "iframe[src*='recaptcha/api2/bframe'], iframe[src*='recaptcha/enterprise/bframe'], iframe[src*='challenges.cloudflare.com']";
+    static final Duration CONFIRM_WAIT = Duration.ofSeconds(45);
 
     private final ExecutorService thread = Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "browser-filler"); t.setDaemon(true); return t; });
     private final AtomicBoolean busy = new AtomicBoolean();
@@ -54,20 +61,27 @@ public class BrowserFiller {
 
     boolean busy() { return busy.get(); }
 
-    /** Starts a session in the background. {@code onFilled} fires once the form is filled, {@code onDone} when it ends. */
-    boolean start(Session s, Consumer<Report> onFilled, Consumer<Report> onDone) {
-        if (!busy.compareAndSet(false, true)) return false;
+    /**
+     * Starts a session in the background; null if a window is already open.
+     * {@code onNote} gets messages for the user while the window is open (fields we couldn't fill, a CAPTCHA to solve);
+     * {@code onDone} and the returned future get the final report.
+     */
+    CompletableFuture<Report> start(Session s, Consumer<String> onNote, Consumer<Report> onDone) {
+        if (!busy.compareAndSet(false, true)) return null;
+        CompletableFuture<Report> result = new CompletableFuture<>();
         thread.submit(() -> {
-            try { onDone.accept(run(s, onFilled)); }
+            Report r;
+            try { r = run(s, onNote); }
             catch (Exception e) {
                 log.error("Browser session failed", e);
-                onDone.accept(new Report("FAILED", List.of(), "The browser session failed: " + e.getMessage()));
-            } finally { busy.set(false); }
+                r = new Report("FAILED", List.of(), "The browser session failed: " + e.getMessage());
+            }
+            try { onDone.accept(r); } finally { busy.set(false); result.complete(r); }
         });
-        return true;
+        return result;
     }
 
-    private Report run(Session s, Consumer<Report> onFilled) throws Exception {
+    private Report run(Session s, Consumer<String> onNote) throws Exception {
         try (Playwright pw = Playwright.create(new Playwright.CreateOptions().setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")))) {
             Files.createDirectories(profileDir);
             BrowserContext ctx = pw.chromium().launchPersistentContext(profileDir, new BrowserType.LaunchPersistentContextOptions()
@@ -76,8 +90,8 @@ public class BrowserFiller {
                 Page page = ctx.pages().isEmpty() ? ctx.newPage() : ctx.pages().getFirst();
                 page.setDefaultTimeout(6000);
                 if (dryRun) page.route("**/*", r -> {
-                    // test mode: let the page load, but nothing is ever sent to the employer
-                    if (!r.request().method().equals("GET") && r.request().url().matches("https?://[^/]*(greenhouse\\.io|lever\\.co)/.*")) {
+                    // test mode: pages load, but no POST/PUT leaves the browser, so nothing can reach the employer
+                    if (!r.request().method().equals("GET") && !r.request().method().equals("HEAD")) {
                         log.info("dry run: blocked {} {}", r.request().method(), r.request().url());
                         r.abort();
                     } else r.resume();
@@ -105,7 +119,13 @@ public class BrowserFiller {
                     } catch (PlaywrightException e) { notFilled.add(f.label()); }
                 }
                 try { page.screenshot(new Page.ScreenshotOptions().setPath(s.screenshot()).setFullPage(true)); } catch (PlaywrightException ignored) { }
-                onFilled.accept(new Report("FILLED", notFilled, null));
+                if (!notFilled.isEmpty()) {
+                    onNote.accept("Couldn't fill: " + String.join("; ", notFilled) + ". Please fill these in the browser window, then press Submit there.");
+                } else if (s.autoSubmit()) {
+                    String handover = submit(page);
+                    if (handover == null) return new Report("SUBMITTED", List.of(), null);
+                    onNote.accept(handover);
+                }
                 return watch(page);
             } finally {
                 try { ctx.close(); } catch (PlaywrightException ignored) { }
@@ -129,18 +149,56 @@ public class BrowserFiller {
         } catch (PlaywrightException ignored) { }
     }
 
+    /**
+     * Auto mode: presses Submit and waits for the confirmation page. Returns null when confirmed, otherwise a message
+     * telling the user what to finish in the window. A CAPTCHA challenge is always handed to the user, never solved.
+     */
+    static String submit(Page page) {
+        Locator button = page.locator("button#btn-submit, button[data-qa=btn-submit], form button[type=submit], form input[type=submit]");
+        if (button.count() == 0)
+            button = page.getByRole(com.microsoft.playwright.options.AriaRole.BUTTON,
+                    new Page.GetByRoleOptions().setName(Pattern.compile("submit", Pattern.CASE_INSENSITIVE)));
+        if (button.count() == 0) return "Everything is filled, but the Submit button wasn't found. Please press it in the browser window.";
+        try {
+            button.first().click();
+        } catch (PlaywrightException e) {
+            return "Everything is filled, but pressing Submit failed. Please press it in the browser window.";
+        }
+        Instant until = Instant.now().plus(CONFIRM_WAIT);
+        while (Instant.now().isBefore(until)) {
+            if (confirmed(page)) return null;
+            if (captchaShown(page))
+                return "The site is asking for a human check (CAPTCHA). Please complete it in the browser window; it then submits.";
+            page.waitForTimeout(1500);
+        }
+        return "Submit was pressed, but the site hasn't confirmed yet. Please check the browser window for errors.";
+    }
+
+    static boolean captchaShown(Page page) {
+        Locator frames = page.locator(CAPTCHA_CHALLENGE);
+        try {
+            for (int i = 0; i < frames.count(); i++) if (frames.nth(i).isVisible()) return true;
+        } catch (PlaywrightException ignored) { }
+        return false;
+    }
+
+    static boolean confirmed(Page page) {
+        if (CONFIRMED_URL.matcher(page.url()).find()) return true;
+        try {
+            String text = page.locator("body").innerText(new Locator.InnerTextOptions().setTimeout(2000));
+            return CONFIRMED_TEXT.matcher(text.length() > 5000 ? text.substring(0, 5000) : text).find();
+        } catch (PlaywrightException e) {
+            return false; // page navigating
+        }
+    }
+
     /** Waits for the user to submit (confirmation page) or close the window. */
     private static Report watch(Page page) {
         Instant until = Instant.now().plus(WATCH_FOR);
         try {
             while (Instant.now().isBefore(until)) {
                 if (page.isClosed()) return new Report("CLOSED", List.of(), null);
-                if (CONFIRMED_URL.matcher(page.url()).find()) return new Report("SUBMITTED", List.of(), null);
-                try {
-                    String text = page.locator("body").innerText(new Locator.InnerTextOptions().setTimeout(2000));
-                    if (CONFIRMED_TEXT.matcher(text.length() > 5000 ? text.substring(0, 5000) : text).find())
-                        return new Report("SUBMITTED", List.of(), null);
-                } catch (PlaywrightException ignored) { /* page navigating */ }
+                if (confirmed(page)) return new Report("SUBMITTED", List.of(), null);
                 page.waitForTimeout(2000);
             }
             return new Report("TIMEOUT", List.of(), null);

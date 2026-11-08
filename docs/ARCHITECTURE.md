@@ -34,9 +34,9 @@
 |---|---|---|
 | 1 | Auth (JWT), PostgreSQL + Flyway, profile management, resume upload + text extraction | **Done** |
 | 2 | Job discovery: followed Greenhouse/Lever boards, Adzuna search (optional key), add by link (ATS API or schema.org JobPosting) or paste-in, dedupe, deterministic JD parsing | **Done** |
-| 3 | Matching: compatibility score (skills, experience, location, salary, notice), explanation per score, best-resume selection | Next |
+| 3 | Matching: 0–100 score per job (skills incl. resume skills, years/seniority, desired role, location with city aliases, stated salary), reasons, unknown parts left out | **Score done** (best-resume selection later) |
 | 4 | Tailoring: per-job wording suggestions from existing resume facts only, diffed for the user to approve | |
-| 5 | Application agent: form reading (Greenhouse API / Lever page), answers from profile → answer bank → local LLM, Playwright (Java, in the backend) fills a visible Chrome window, user submits, confirmation detected | **Steps 1–2 done** (auto mode next) |
+| 5 | Application agent: form reading (Greenhouse API / Lever page), answers from profile → answer bank → local LLM, Playwright (Java, in the backend) fills a visible Chrome window, user submits, confirmation detected; auto mode (min score, daily limit, optional auto-submit, CAPTCHA handed to the user) | **Done** |
 | 6 | Tracking: application status timeline, email/portal status sync, dashboard | |
 
 Each phase ships with its migrations, endpoints, UI and tests before the next one starts.

@@ -10,4 +10,6 @@ public interface ApplicationRepository extends JpaRepository<Application, UUID> 
     List<Application> findByUserIdOrderByUpdatedAtDesc(UUID userId);
     Optional<Application> findByIdAndUserId(UUID id, UUID userId);
     Optional<Application> findByUserIdAndJobId(UUID userId, UUID jobId);
+    long countByUserIdAndSubmittedAtAfter(UUID userId, java.time.Instant since);
+    List<Application> findByUserIdAndStatusAndAutoTrueOrderByCreatedAtAsc(UUID userId, Application.Status status);
 }

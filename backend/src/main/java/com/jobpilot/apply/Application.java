@@ -21,6 +21,8 @@ public class Application {
     String fields;
     String error;
     String screenshotKey;
+    /** Prepared by auto mode (only these are submitted automatically). */
+    boolean auto;
     Instant createdAt = Instant.now();
     Instant updatedAt = Instant.now();
     Instant submittedAt;

@@ -142,10 +142,10 @@ class ApplyTest {
     @Test
     void browserHelpers() {
         // the ATS-hosted form, never the company page that embeds it
-        assertEquals("https://jobs.lever.co/meesho/abc/apply", ApplicationController.applyUrl("lever", "lever:meesho", "abc", "https://jobs.lever.co/meesho/abc"));
-        assertEquals("https://job-boards.eu.greenhouse.io/groww/jobs/1", ApplicationController.applyUrl("greenhouse", "greenhouse:groww", "1", "https://job-boards.eu.greenhouse.io/groww/jobs/1"));
-        assertEquals("https://job-boards.greenhouse.io/databricks/jobs/7", ApplicationController.applyUrl("greenhouse", "greenhouse:databricks", "7", "https://databricks.com/careers?gh_jid=7"));
-        assertEquals("https://job-boards.greenhouse.io/x/jobs/7", ApplicationController.applyUrl("greenhouse", "greenhouse:x", "7", "https://evil.example/greenhouse.io/"));
+        assertEquals("https://jobs.lever.co/meesho/abc/apply", ApplicationService.applyUrl("lever", "lever:meesho", "abc", "https://jobs.lever.co/meesho/abc"));
+        assertEquals("https://job-boards.eu.greenhouse.io/groww/jobs/1", ApplicationService.applyUrl("greenhouse", "greenhouse:groww", "1", "https://job-boards.eu.greenhouse.io/groww/jobs/1"));
+        assertEquals("https://job-boards.greenhouse.io/databricks/jobs/7", ApplicationService.applyUrl("greenhouse", "greenhouse:databricks", "7", "https://databricks.com/careers?gh_jid=7"));
+        assertEquals("https://job-boards.greenhouse.io/x/jobs/7", ApplicationService.applyUrl("greenhouse", "greenhouse:x", "7", "https://evil.example/greenhouse.io/"));
 
         // confirmation detection: the sites' thank-you pages, not the form itself
         assertTrue(BrowserFiller.CONFIRMED_URL.matcher("https://job-boards.greenhouse.io/groww/jobs/1/confirmation").find());
@@ -155,6 +155,71 @@ class ApplyTest {
         assertTrue(BrowserFiller.CONFIRMED_TEXT.matcher("Thank you for applying to Groww!").find());
         assertFalse(BrowserFiller.CONFIRMED_TEXT.matcher("Submit your application").find());
         assertEquals("cards[a\\\"b]", BrowserFiller.css("cards[a\"b]"));
+    }
+
+    // ------------------------------------------------------------ auto mode
+
+    @Autowired AutoApplyService auto;
+
+    @Test
+    void autoModePicksBestOpenAtsJobsAndRespectsSettings() throws Exception {
+        String reg = mvc().perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"auto" + UUID.randomUUID() + "@example.com\",\"password\":\"secret123\",\"fullName\":\"Asha Rao\"}"))
+                .andReturn().getResponse().getContentAsString();
+        String auth = "Bearer " + reg.replaceAll(".*\"token\":\"([^\"]+)\".*", "$1");
+        UUID user = UUID.fromString(reg.replaceAll(".*\"user\":\\{\"id\":\"([^\"]+)\".*", "$1"));
+        mvc().perform(put("/api/profile").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("""
+                {"willingToRelocate":false,"yearsExperience":4,"skills":["Java","Spring Boot","Kafka"],"desiredRoles":["Backend Engineer"],
+                 "desiredLocations":["Bengaluru"],"experiences":[],"educations":[]}""")).andExpect(status().isOk());
+
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        java.util.function.BiFunction<String, String, com.jobpilot.job.JobDraft> draft = (title, desc) -> new com.jobpilot.job.JobDraft(
+                "greenhouse", tag + title, "greenhouse:acme" + tag, "https://job-boards.greenhouse.io/acme/jobs/1", null, title, "Acme",
+                "Bengaluru, India", null, null, null, null, null, desc, java.time.Instant.now());
+        store.save(List.of(
+                draft.apply("Backend Engineer", "Java, Spring Boot and Kafka. 3+ years of experience."),
+                draft.apply("Backend Engineer II", "Java and Spring Boot. 3+ years of experience."),
+                draft.apply("Data Scientist", "Python and machine learning. 8+ years of experience.")
+        ), null, user, com.jobpilot.job.UserJob.Origin.COMPANY, d -> true);
+        String manual = mvc().perform(post("/api/jobs/manual").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Backend Engineer\",\"company\":\"Paste Co\",\"location\":\"Bengaluru\",\"description\":\"Java Spring Boot Kafka\"}"))
+                .andReturn().getResponse().getContentAsString();
+
+        // best first, threshold applied, manual jobs (no ATS form) never picked
+        List<UUID> picks = auto.pick(user, 70, 10);
+        assertEquals(2, picks.size(), "the data-science job is below 70");
+        assertFalse(picks.toString().contains(manual.replaceAll(".*\"id\":\"([^\"]+)\".*", "$1")));
+        assertEquals(1, auto.pick(user, 70, 1).size(), "limit");
+        assertEquals(List.of(), auto.pick(user, 70, 0));
+
+        // jobs list carries the score and can sort by it
+        mvc().perform(get("/api/jobs?sort=match").header("Authorization", auth))
+                .andExpect(jsonPath("$.items[0].match.score").value(greaterThanOrEqualTo(90)))
+                .andExpect(jsonPath("$.items[3].title").value("Data Scientist"))
+                .andExpect(jsonPath("$.items[3].match.gaps", hasItem("Needs 8+ years; you have 4")));
+
+        // settings: validated, defaults off
+        mvc().perform(get("/api/auto-apply").header("Authorization", auth))
+                .andExpect(jsonPath("$.enabled").value(false)).andExpect(jsonPath("$.autoSubmit").value(false))
+                .andExpect(jsonPath("$.minScore").value(70)).andExpect(jsonPath("$.submittedToday").value(0));
+        mvc().perform(put("/api/auto-apply").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true,\"autoSubmit\":false,\"minScore\":150,\"dailyLimit\":10}"))
+                .andExpect(status().isBadRequest());
+        mvc().perform(put("/api/auto-apply").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true,\"autoSubmit\":true,\"minScore\":80,\"dailyLimit\":1}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.autoSubmit").value(true));
+
+        // daily limit already used up by a manual submission: the run prepares nothing and says why
+        Application done = new Application(user, UUID.fromString(manual.replaceAll(".*\"id\":\"([^\"]+)\".*", "$1")));
+        ApplicationService.set(done, List.of());
+        done.status = Application.Status.SUBMITTED;
+        done.submittedAt = java.time.Instant.now();
+        apps.save(done);
+        AutoApplyService.Summary s = auto.run(user);
+        assertEquals(0, s.prepared());
+        assertTrue(s.notes().stream().anyMatch(n -> n.contains("Daily limit")), s.notes().toString());
+        mvc().perform(get("/api/auto-apply").header("Authorization", auth))
+                .andExpect(jsonPath("$.submittedToday").value(1)).andExpect(jsonPath("$.lastSummary.prepared").value(0));
     }
 
     // ------------------------------------------------------------ endpoints
@@ -183,7 +248,7 @@ class ApplyTest {
 
         // a prepared application with two open questions
         Application a = new Application(user, UUID.fromString(job));
-        ApplicationController.set(a, List.of(
+        ApplicationService.set(a, List.of(
                 new FormField("q1", "Do you have a relative working in Groww?", "SELECT", true, List.of("Yes", "No"), null, null),
                 new FormField("q2", "Current CTC", "TEXT", true, List.of(), null, null),
                 new FormField("email", "Email", "TEXT", true, List.of(), "a@example.com", "PROFILE")));

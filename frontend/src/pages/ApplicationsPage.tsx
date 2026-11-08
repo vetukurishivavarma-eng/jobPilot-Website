@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api, ApiError, type Application, type ApplicationStatus, type FormField } from '../api'
+import { api, ApiError, type Application, type ApplicationStatus, type AutoSettings, type FormField } from '../api'
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
 
@@ -25,7 +25,8 @@ export function StatusBadge({ s }: { s: ApplicationStatus }) {
 export default function ApplicationsPage() {
   const [items, setItems] = useState<Application[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => { api.listApplications().then(setItems).catch(e => setError(msg(e))) }, [])
+  const load = () => api.listApplications().then(setItems).catch(e => setError(msg(e)))
+  useEffect(() => { load() }, [])
 
   return (
     <div className="space-y-6">
@@ -35,6 +36,7 @@ export default function ApplicationsPage() {
           The agent reads each form and fills what it can from your profile. Answer the rest once and it remembers for next time.
         </p>
       </div>
+      <AutoPanel onRunFinished={load} />
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</p>}
       {items === null ? <p className="text-muted">Loading…</p> : items.length === 0 ? (
         <div className="card text-center text-sm text-muted">
@@ -49,6 +51,7 @@ export default function ApplicationsPage() {
                   <p className="font-semibold">{a.jobTitle ?? 'Job removed'}</p>
                   <p className="text-xs text-muted">{a.company} · updated {new Date(a.updatedAt).toLocaleString()}</p>
                 </div>
+                {a.auto && <span className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">auto</span>}
                 {a.missing > 0 && <span className="text-xs text-muted">{a.missing} to answer</span>}
                 <StatusBadge s={a.status} />
               </Link>
@@ -57,6 +60,92 @@ export default function ApplicationsPage() {
         </ul>
       )}
     </div>
+  )
+}
+
+function AutoPanel({ onRunFinished }: { onRunFinished: () => void }) {
+  const [s, setS] = useState<AutoSettings | null>(null)
+  const [form, setForm] = useState({ enabled: false, autoSubmit: false, minScore: 70, dailyLimit: 10 })
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const apply = (x: AutoSettings) => { setS(x); setForm({ enabled: x.enabled, autoSubmit: x.autoSubmit, minScore: x.minScore, dailyLimit: x.dailyLimit }) }
+  useEffect(() => { api.getAuto().then(apply).catch(e => setError(msg(e))) }, [])
+  useEffect(() => {
+    if (!s?.running) return
+    const t = setInterval(() => api.getAuto().then(x => { setS(x); if (!x.running) onRunFinished() }).catch(() => {}), 3000)
+    return () => clearInterval(t)
+  }, [s?.running])
+
+  if (!s) return error ? <p className="text-sm text-danger">{error}</p> : null
+  const dirty = form.enabled !== s.enabled || form.autoSubmit !== s.autoSubmit || form.minScore !== s.minScore || form.dailyLimit !== s.dailyLimit
+
+  async function save() {
+    setError(null)
+    try { apply(await api.saveAuto(form)); setSaved(true) } catch (e) { setError(msg(e)) }
+  }
+  async function run() {
+    setError(null)
+    try { setS(await api.runAuto()) } catch (e) { setError(msg(e)) }
+  }
+  const sum = s.lastSummary
+
+  return (
+    <section className="card space-y-4">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="mr-auto">
+          <h2 className="font-display text-lg font-bold">Auto mode</h2>
+          <p className="max-w-xl text-xs text-muted">
+            Every 15 minutes the agent prepares applications for your best-matching Greenhouse and Lever jobs. {s.submittedToday} of {s.dailyLimit} submitted today.
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+          <input type="checkbox" className="h-4 w-4" checked={form.enabled} onChange={e => { setForm({ ...form, enabled: e.target.checked }); setSaved(false) }} />
+          On
+        </label>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="auto-min">Only jobs matching at least {form.minScore}</label>
+          <input id="auto-min" type="range" min={0} max={100} step={5} className="w-full accent-[var(--color-signal)]" value={form.minScore}
+            onChange={e => { setForm({ ...form, minScore: Number(e.target.value) }); setSaved(false) }} />
+        </div>
+        <div>
+          <label className="label" htmlFor="auto-limit">Most applications per day</label>
+          <input id="auto-limit" type="number" min={1} max={50} className="field w-28" value={form.dailyLimit}
+            onChange={e => { setForm({ ...form, dailyLimit: Number(e.target.value) }); setSaved(false) }} />
+        </div>
+      </div>
+
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5 h-4 w-4" checked={form.autoSubmit} onChange={e => { setForm({ ...form, autoSubmit: e.target.checked }); setSaved(false) }} />
+        <span>
+          <b>Submit for me</b> when every answer is in. A Chrome window opens and the agent presses Submit.
+          <span className="block text-xs text-muted">
+            Off: applications wait here for your review. On a "verify you're human" check, it stops and leaves the window for you.
+          </span>
+        </span>
+      </label>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-ghost" onClick={save} disabled={!dirty}>{saved && !dirty ? 'Saved' : 'Save settings'}</button>
+        <button className="btn" onClick={run} disabled={s.running || dirty} title={dirty ? 'Save your settings first' : undefined}>
+          {s.running ? 'Running…' : 'Run now'}
+        </button>
+        {error && <span className="text-sm text-danger">{error}</span>}
+      </div>
+
+      {sum && (
+        <div className="rounded-md bg-paper p-3 text-sm">
+          <p className="font-medium">
+            Last run {new Date(sum.at).toLocaleString()}: {sum.prepared} prepared, {sum.needYourAnswers} need your answers, {sum.submitted} submitted
+            {sum.waitingForYou > 0 && `, ${sum.waitingForYou} waiting for you`}{sum.failed > 0 && `, ${sum.failed} failed`}.
+          </p>
+          {sum.notes.length > 0 && <ul className="mt-1 list-disc pl-5 text-xs text-muted">{sum.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+        </div>
+      )}
+    </section>
   )
 }
 
