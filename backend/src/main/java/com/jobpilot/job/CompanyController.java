@@ -37,6 +37,12 @@ public class CompanyController {
             new Suggestion(Ats.GREENHOUSE, "rubrik", "Rubrik", false),
             new Suggestion(Ats.GREENHOUSE, "databricks", "Databricks", false),
             new Suggestion(Ats.GREENHOUSE, "stripe", "Stripe", false),
+            // checked 2026-11-08: engineering openings in India
+            new Suggestion(Ats.GREENHOUSE, "okta", "Okta", false),
+            new Suggestion(Ats.GREENHOUSE, "twilio", "Twilio", false),
+            new Suggestion(Ats.GREENHOUSE, "hackerrank", "HackerRank", false),
+            new Suggestion(Ats.GREENHOUSE, "slice", "slice", false),
+            new Suggestion(Ats.LEVER, "hevodata", "Hevo Data", false),
             new Suggestion(Ats.LEVER, "cred", "CRED", false),
             new Suggestion(Ats.LEVER, "meesho", "Meesho", false),
             new Suggestion(Ats.LEVER, "zeta", "Zeta", false),

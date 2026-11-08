@@ -58,6 +58,22 @@ class MatchScorerTest {
     }
 
     @Test
+    void abroadAndBigExperienceGapsAreCapped() {
+        // real case: Thane user open to relocating got 86 for a Mountain View job
+        MatchScorer.Candidate thane = new MatchScorer.Candidate(Set.of("Java", "Spring Boot"), new BigDecimal(4),
+                List.of("Software Engineer"), List.of("Thane"), true, null, null);
+        MatchScorer.Match us = MatchScorer.score(thane, job("Software Engineer", List.of("Java", "Spring Boot"), 4, "Mountain View, California", null));
+        assertTrue(us.score() <= 40 && us.gaps().getFirst().contains("another country"), us.toString());
+        assertTrue(MatchScorer.score(thane, job("Software Engineer", List.of("Java"), 4, "Bangalore, Karnataka", null)).score() > 80, "relocating within India is fine");
+        assertTrue(MatchScorer.score(thane, job("Software Engineer", List.of("Java"), 4, "Mumbai, India", null)).good().contains("In a location you want"), "Thane = Mumbai");
+        assertTrue(MatchScorer.score(thane, job("Staff Software Engineer", List.of("Java"), 8, "Bengaluru, India", null)).score() <= 50, "4 years vs 8+");
+        assertTrue(MatchScorer.score(thane, job("Software Engineer", List.of("Java"), 4, "Anywhere", "REMOTE")).score() > 80, "remote isn't abroad");
+        assertTrue(MatchScorer.score(thane, job("Software Engineer", List.of("Java"), 4, "Remote - India", "REMOTE")).score() > 80);
+        assertTrue(MatchScorer.score(thane, job("Software Engineer", List.of("Java"), 4, "Remote - US", "REMOTE")).score() <= 40, "remote in the US needs US work rights");
+        assertTrue(MatchScorer.score(thane, job("Software Development Engineer Intern", List.of("Java"), 0, "Bangalore", null)).score() <= 50, "4 years vs an intern post");
+    }
+
+    @Test
     void cityAliases() {
         assertTrue(MatchScorer.sameCity("gurgaon, haryana", "Gurugram"));
         assertTrue(MatchScorer.sameCity("bengaluru-vtp, india", "Bangalore"));

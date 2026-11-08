@@ -25,7 +25,7 @@ public final class MatchScorer {
     /** Usual minimum years for a seniority when the posting doesn't state them. */
     private static final Map<String, Integer> SENIORITY_YEARS = Map.of("INTERN", 0, "ENTRY", 0, "MID", 2, "SENIOR", 5, "LEAD", 8, "MANAGER", 6);
     private static final List<List<String>> CITY_ALIASES = List.of(
-            List.of("bengaluru", "bangalore"), List.of("gurugram", "gurgaon"), List.of("mumbai", "bombay"),
+            List.of("bengaluru", "bangalore"), List.of("gurugram", "gurgaon"), List.of("mumbai", "bombay", "thane", "navi mumbai"),
             List.of("chennai", "madras"), List.of("kolkata", "calcutta"), List.of("delhi", "new delhi", "ncr"),
             List.of("hyderabad", "secunderabad"), List.of("pune", "poona"), List.of("vizag", "visakhapatnam"));
 
@@ -51,7 +51,7 @@ public final class MatchScorer {
         Integer need = j.minYears() != null ? j.minYears() : j.seniority() == null ? null : SENIORITY_YEARS.get(j.seniority());
         if (need != null && c.years() != null) {
             double y = c.years().doubleValue();
-            double fit = y >= need ? 1 : need == 0 ? 1 : Math.max(0, 1 - (need - y) / Math.max(need, 2));
+            double fit = y >= need ? 1 : need == 0 ? 1 : Math.max(0, 1 - 1.5 * (need - y) / Math.max(need, 2));
             total += W_EXPERIENCE * fit;
             weights += W_EXPERIENCE;
             String yrs = c.years().stripTrailingZeros().toPlainString();
@@ -93,7 +93,37 @@ public final class MatchScorer {
             else gaps.add("Top of the stated range is below your expectation");
         }
 
-        return new Match(weights == 0 ? null : (int) Math.round(100 * total / weights), good, gaps);
+        Integer score = weights == 0 ? null : (int) Math.round(100 * total / weights);
+        // ponytail: hard caps, not weights: a 15-point location weight still left a Mountain View job at 86 for a Thane user.
+        // India only for now (the product's market); add a country table when other countries' users arrive.
+        // "Remote - US" is abroad too: only a bare "Remote"/"Anywhere" counts as open to India
+        boolean abroad = j.location() != null && namesAPlace(j.location())
+                && c.desiredLocations() != null && c.desiredLocations().stream().anyMatch(MatchScorer::inIndia) && !inIndia(j.location());
+        if (score != null && abroad) { score = Math.min(score, 40); gaps.addFirst("In another country (needs a work visa)"); }
+        if (score != null && need != null && c.years() != null && need - c.years().doubleValue() >= 3) score = Math.min(score, 50);
+        if (score != null && c.years() != null && c.years().doubleValue() >= 2 && j.title() != null && ENTRY_TITLE.matcher(j.title()).find()) {
+            score = Math.min(score, 50);
+            gaps.addFirst("An intern / new-grad role; you have " + c.years().stripTrailingZeros().toPlainString() + " years");
+        }
+        return new Match(score, good, gaps);
+    }
+
+    private static final List<String> INDIA = List.of("india", "bengaluru", "bangalore", "mumbai", "bombay", "thane", "pune", "hyderabad",
+            "secunderabad", "chennai", "delhi", "ncr", "gurugram", "gurgaon", "noida", "kolkata", "ahmedabad", "jaipur", "kochi",
+            "vizag", "visakhapatnam", "chandigarh", "indore", "coimbatore", "trivandrum", "thiruvananthapuram", "mysuru", "mysore");
+
+    private static final java.util.regex.Pattern ENTRY_TITLE = java.util.regex.Pattern.compile("(?i)\\b(intern(ship)?|new grad|graduate|fresher|trainee|apprentice)\\b");
+
+    /** False for "Remote", "Anywhere", "Hybrid": words that don't name a country or city. */
+    static boolean namesAPlace(String location) {
+        String rest = location.toLowerCase(Locale.ROOT).replaceAll("\\b(remote|anywhere|worldwide|global|hybrid|onsite|on-site|in|apac|asia|work from home|wfh)\\b", "")
+                .replaceAll("[^a-z]+", "");
+        return !rest.isEmpty();
+    }
+
+    static boolean inIndia(String place) {
+        String p = place.toLowerCase(Locale.ROOT);
+        return INDIA.stream().anyMatch(p::contains);
     }
 
     static boolean sameCity(String jobLocationLower, String wanted) {

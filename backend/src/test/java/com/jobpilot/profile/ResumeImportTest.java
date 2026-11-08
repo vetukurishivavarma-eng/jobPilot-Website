@@ -62,7 +62,8 @@ class ResumeImportTest {
         assertEquals(2020, p.educations().getFirst().endYear());
         // computed from the dates, not guessed: Jul 2020 to now
         assertTrue(p.yearsExperience().compareTo(new BigDecimal("5")) >= 0, p.yearsExperience().toString());
-        assertEquals(List.of("Software Engineer"), p.desiredRoles(), "suggested from the current title");
+        assertEquals(List.of("Software Engineer", "Backend Engineer", "Java Developer"), p.desiredRoles(), "searchable titles from the title and stack");
+        assertEquals(List.of("System Engineer", "Software Engineer"), ResumeImport.suggestRoles("System Engineer (Digital Cadre)", List.of("SQL")));
         assertEquals(List.of("Bengaluru"), p.desiredLocations());
         assertTrue(r.notes().isEmpty(), r.notes().toString());
     }

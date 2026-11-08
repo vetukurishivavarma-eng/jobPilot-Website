@@ -151,12 +151,28 @@ final class ResumeImport {
                 or(summary, c.summary()),
                 mergedSkills.stream().limit(100).toList(),
                 // suggestions so matching works straight away; the user edits them
-                !c.desiredRoles().isEmpty() || currentTitle == null ? c.desiredRoles() : List.of(currentTitle),
+                !c.desiredRoles().isEmpty() || currentTitle == null ? c.desiredRoles() : suggestRoles(currentTitle, mergedSkills),
                 !c.desiredLocations().isEmpty() || loc == null ? c.desiredLocations() : List.of(loc.split(",")[0].strip()),
                 exps.isEmpty() ? c.experiences() : exps.stream().limit(30).toList(),
                 edus.isEmpty() ? c.educations() : edus.stream().limit(15).toList(),
                 c.updatedAt());
         return new Result(draft, notes);
+    }
+
+    /**
+     * Job-board titles to search for. Company titles like "System Engineer (Digital Cadre)" match no posting, so the
+     * parenthetical goes and common titles for the person's stack are added.
+     */
+    static List<String> suggestRoles(String title, List<String> skills) {
+        Set<String> out = new LinkedHashSet<>();
+        out.add(title.replaceAll("\\s*\\(.*?\\)", "").replaceAll("(?i)^(senior|sr\\.?|junior|jr\\.?|lead|principal|staff)\\s+", "").strip());
+        out.add("Software Engineer");
+        boolean has = false;
+        for (String s : List.of("Java", "Spring Boot", "Node.js", "Go", "Microservices", "REST APIs", "Django", "PostgreSQL")) has |= skills.contains(s);
+        if (has) out.add("Backend Engineer");
+        if (skills.contains("Java")) out.add("Java Developer");
+        out.removeIf(String::isBlank);
+        return out.stream().limit(4).toList();
     }
 
     static String prompt(String text) {
