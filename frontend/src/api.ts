@@ -47,7 +47,7 @@ export type FormField = {
 export type ApplicationStatus = 'NEEDS_INPUT' | 'READY' | 'FILLING' | 'SUBMITTED' | 'FAILED'
 export type Application = {
   id: string; jobId: string; jobTitle: string | null; company: string | null; jobUrl: string | null
-  status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null
+  status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null; hasScreenshot: boolean
   createdAt: string; updatedAt: string; submittedAt: string | null
 }
 
@@ -119,6 +119,13 @@ export const api = {
   createApplication: (jobId: string) => request<Application>('POST', '/applications', { jobId }),
   saveAnswers: (id: string, answers: Record<string, string>) => request<Application>('PUT', `/applications/${id}/answers`, { answers }),
   deleteApplication: (id: string) => request<void>('DELETE', `/applications/${id}`),
+  fillApplication: (id: string) => request<Application>('POST', `/applications/${id}/fill`),
+  /** Authenticated image: fetched as a blob, shown via an object URL. */
+  screenshotUrl: async (id: string) => {
+    const res = await fetch(`/api/applications/${id}/screenshot`, { headers: { Authorization: `Bearer ${token.get()}` } })
+    if (!res.ok) throw new ApiError(res.status, 'NOT_FOUND', 'No screenshot yet')
+    return URL.createObjectURL(await res.blob())
+  },
   /** Authenticated download: fetch as blob, then hand the browser an object URL. */
   downloadResume: async (r: Resume) => {
     const res = await fetch(`/api/resumes/${r.id}/file`, { headers: { Authorization: `Bearer ${token.get()}` } })

@@ -69,9 +69,28 @@ export function ApplicationPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  const [filling, setFilling] = useState(false)
+  const [shot, setShot] = useState<string | null>(null)
+
   useEffect(() => { api.getApplication(id!).then(setA).catch(e => setError(msg(e))) }, [id])
+  // while the browser window is open, follow its progress
+  useEffect(() => {
+    if (a?.status !== 'FILLING') return
+    const t = setInterval(() => api.getApplication(id!).then(setA).catch(() => {}), 3000)
+    return () => clearInterval(t)
+  }, [a?.status, id])
 
   if (!a) return error ? <p className="text-danger">{error}</p> : <p className="text-muted">Loading…</p>
+
+  async function fill() {
+    setFilling(true)
+    setError(null)
+    try { setA(await api.fillApplication(a!.id)); window.scrollTo({ top: 0, behavior: 'smooth' }) } catch (e) { setError(msg(e)) } finally { setFilling(false) }
+  }
+
+  async function showShot() {
+    try { setShot(await api.screenshotUrl(a!.id)) } catch (e) { setError(msg(e)) }
+  }
 
   const locked = a.status === 'FILLING' || a.status === 'SUBMITTED'
   const value = (f: FormField) => draft[f.key] ?? f.value ?? ''
@@ -105,7 +124,31 @@ export function ApplicationPage() {
       </div>
 
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</p>}
-      {a.error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{a.error}</p>}
+
+      {a.status === 'FILLING' && (
+        <section className="rounded-xl border border-blue-300 bg-blue-50 p-5" aria-live="polite">
+          <h2 className="font-display text-lg font-bold">Your application is open in a Chrome window</h2>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
+            <li>Check the filled form{a.error ? ' and fill the fields listed below' : ''}.</li>
+            <li>If the site shows a "verify you're human" check, complete it. JobPilot never does that for you.</li>
+            <li>Press the site's <b>Submit</b> button. This page updates by itself when the site confirms.</li>
+          </ol>
+          {a.error && <p className="mt-3 rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900">{a.error}</p>}
+        </section>
+      )}
+      {a.status === 'SUBMITTED' && (
+        <section className="rounded-xl border border-signal bg-signal-soft p-5">
+          <h2 className="font-display text-lg font-bold text-signal">Applied ✓</h2>
+          <p className="text-sm">The site confirmed your application{a.submittedAt && ` on ${new Date(a.submittedAt).toLocaleString()}`}.</p>
+        </section>
+      )}
+      {a.status !== 'FILLING' && a.error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{a.error}</p>}
+      {a.hasScreenshot && a.status !== 'FILLING' && (
+        <div>
+          {shot ? <div className="max-h-[36rem] overflow-auto rounded-lg border border-line bg-white"><img src={shot} alt="The form as the agent filled it" className="w-full" /></div>
+            : <button className="btn-ghost" onClick={showShot}>See the form as the agent filled it</button>}
+        </div>
+      )}
 
       {todo.length > 0 && (
         <section className="card space-y-4 border-amber-300">
@@ -129,9 +172,13 @@ export function ApplicationPage() {
             {dirty ? 'Unsaved changes' : saved ? 'Saved' : a.missing > 0 ? `${a.missing} required answer${a.missing === 1 ? '' : 's'} missing` : 'All required answers are in'}
           </span>
           <button className="btn-ghost" onClick={save} disabled={!dirty || saving || locked}>{saving ? 'Saving…' : 'Save answers'}</button>
-          <button className="btn" disabled title="Coming next: the agent opens the form in a browser window and fills it">
-            Fill application form
-          </button>
+          {a.status !== 'SUBMITTED' && (
+            <button className="btn" onClick={fill}
+              disabled={filling || dirty || a.missing > 0 || a.status === 'FILLING'}
+              title={dirty ? 'Save your answers first' : a.missing > 0 ? 'Answer the required questions first' : 'Opens the form in Chrome and fills it for you'}>
+              {filling ? 'Opening…' : a.status === 'FILLING' ? 'Window open' : 'Fill application form'}
+            </button>
+          )}
         </div>
       </div>
     </div>

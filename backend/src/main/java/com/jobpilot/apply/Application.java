@@ -20,6 +20,7 @@ public class Application {
     /** JSON list of {@link FormField}. */
     String fields;
     String error;
+    String screenshotKey;
     Instant createdAt = Instant.now();
     Instant updatedAt = Instant.now();
     Instant submittedAt;

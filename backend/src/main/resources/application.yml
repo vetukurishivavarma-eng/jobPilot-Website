@@ -38,3 +38,5 @@ jobpilot:
   # Local LLM used by the apply agent for open-ended questions ("Why do you want to join?"). Optional.
   ollama-url: ${OLLAMA_URL:http://localhost:11434}
   ollama-model: ${OLLAMA_MODEL:qwen2.5:3b-instruct}
+  # Test mode for the apply agent: forms are filled but nothing is ever sent to the employer.
+  apply-dry-run: ${APPLY_DRY_RUN:false}

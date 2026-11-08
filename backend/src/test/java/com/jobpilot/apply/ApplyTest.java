@@ -139,6 +139,24 @@ class ApplyTest {
                 AnswerBank.key("Do you have a relative working in CRED?", "CRED"), "same question at another company");
     }
 
+    @Test
+    void browserHelpers() {
+        // the ATS-hosted form, never the company page that embeds it
+        assertEquals("https://jobs.lever.co/meesho/abc/apply", ApplicationController.applyUrl("lever", "lever:meesho", "abc", "https://jobs.lever.co/meesho/abc"));
+        assertEquals("https://job-boards.eu.greenhouse.io/groww/jobs/1", ApplicationController.applyUrl("greenhouse", "greenhouse:groww", "1", "https://job-boards.eu.greenhouse.io/groww/jobs/1"));
+        assertEquals("https://job-boards.greenhouse.io/databricks/jobs/7", ApplicationController.applyUrl("greenhouse", "greenhouse:databricks", "7", "https://databricks.com/careers?gh_jid=7"));
+        assertEquals("https://job-boards.greenhouse.io/x/jobs/7", ApplicationController.applyUrl("greenhouse", "greenhouse:x", "7", "https://evil.example/greenhouse.io/"));
+
+        // confirmation detection: the sites' thank-you pages, not the form itself
+        assertTrue(BrowserFiller.CONFIRMED_URL.matcher("https://job-boards.greenhouse.io/groww/jobs/1/confirmation").find());
+        assertTrue(BrowserFiller.CONFIRMED_URL.matcher("https://jobs.lever.co/meesho/abc/thanks").find());
+        assertFalse(BrowserFiller.CONFIRMED_URL.matcher("https://jobs.lever.co/meesho/abc/apply").find());
+        assertFalse(BrowserFiller.CONFIRMED_URL.matcher("https://jobs.lever.co/thanksgiving-co/abc/apply").find());
+        assertTrue(BrowserFiller.CONFIRMED_TEXT.matcher("Thank you for applying to Groww!").find());
+        assertFalse(BrowserFiller.CONFIRMED_TEXT.matcher("Submit your application").find());
+        assertEquals("cards[a\\\"b]", BrowserFiller.css("cards[a\"b]"));
+    }
+
     // ------------------------------------------------------------ endpoints
 
     @Autowired WebApplicationContext ctx;

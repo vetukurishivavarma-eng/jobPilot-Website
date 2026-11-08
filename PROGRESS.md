@@ -1,6 +1,6 @@
 # JobPilot AI — Progress
 
-## RESUME HERE (2026-11-08, apply agent step 1 done; product plan in docs/PRODUCT.md)
+## RESUME HERE (2026-11-08, apply agent steps 1–2 done; product plan in docs/PRODUCT.md)
 
 **Phases 1 and 2 are done. The apply agent (Phase 5) is in progress**, at the user's request, ahead of Phases 3 and 4.
 19 backend tests pass and the frontend builds.
@@ -18,11 +18,17 @@
 - Live check: real Meesho (Lever) and Groww (Greenhouse) forms were prepared in about 1s, profile answered 13 of 19 and 8 of 11 fields, and answering in the browser moved the application to READY. Ollama gave a good "why join" answer and an honest NEED_INPUT for an unsupported question (first call ~37s while the model loads, then ~8s).
 - Bug the tests caught: "**Exp**ected Compensation (**Year**ly)" matched the years-of-experience rule. Fixed with word boundaries.
 
-### Step 2, NEXT: fill the real form in a visible browser
-- Playwright for Java inside the backend (simpler than the Python worker in ARCHITECTURE.md; update that doc). Launch headed Chromium, open the hosted apply page (Greenhouse `job-boards.greenhouse.io/{token}/jobs/{id}` or `job.url` if it's on greenhouse.io; Lever `jobs.lever.co/{token}/{id}/apply`), fill by field name (text, textarea, radio/select, react-select comboboxes on Greenhouse, Greenhouse location autocomplete), and upload the resume from `ResumeFiles` (temp file with the original filename).
-- Approval mode: leave the window open; detect the confirmation page or URL, then mark SUBMITTED. Auto mode later: click Submit; if a CAPTCHA challenge appears, hand over to the user.
-- **TEST SAFELY: never submit to real employers while testing.** Use `page.route` to abort the submit POST, or test against the saved fixture pages served locally. The first real submission must be the user's own approved application.
-- Then step 3: auto-submit toggle with a daily cap, and screenshots of each submitted form.
+### Step 2, DONE: filling the real form in a visible Chrome window
+- `BrowserFiller` uses Playwright Java 1.62 with `channel("chrome")`, i.e. the user's installed Chrome (no browser download; `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`). It runs a persistent profile at `<storage>/../browser-profile` on one dedicated thread, one window at a time.
+- Fill flow: wait for network idle, fill each field by name/id (falling back to its label), then re-check every text field and retype any that a React re-render wiped (Greenhouse hydration race: First Name came out blank once). Radios and checkboxes match on value or label text. Native selects use selectOption. Greenhouse react-selects and location are typed then Enter. Lever location is typed key by key, then the first `.dropdown-results` suggestion is clicked.
+- After filling: a full-page screenshot, then we watch the URL (`/confirmation`, `/thanks`) and the page text for 30 minutes. SUBMITTED when confirmed; window closed → READY with a message.
+- `POST /api/applications/{id}/fill`, `GET /{id}/screenshot`, V4 migration (`screenshot_key`). UI: Fill button, a live banner while filling (polls every 3s), "Applied ✓", and a scrollable screenshot.
+- `APPLY_DRY_RUN=true` aborts every non-GET request to greenhouse.io/lever.co (each one is logged). **Live dry runs passed:** Meesho (Lever) and Groww (Greenhouse, twice) had every field correct, including resume, dropdowns, location and phone country. Dry-run blocked only Lever's parseResume and a Cloudflare ping; Greenhouse sent nothing.
+- To close the agent's window from a script: kill the chrome.exe processes whose command line contains `browser-profile`.
+
+### NEXT
+1. **First real application**: the user picks a job they actually want and applies with their real profile (APPLY_DRY_RUN off). Watch for confirmation detection on the real thank-you page.
+2. Auto mode (roadmap step 7) after a few real ones; then match score (roadmap step 2), per docs/PRODUCT.md.
 
 ### Phase 2 facts worth remembering
 - Live numbers: Databricks board has 922 jobs; 39 matched "Backend Engineer, Data Scientist". The first full sync takes ~23s, re-runs ~13s.
