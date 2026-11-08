@@ -67,7 +67,7 @@ public final class JdParser {
     }
 
     /** Whole-word match: not preceded by [A-Za-z0-9+#.] and not followed by [A-Za-z0-9+#]. */
-    static boolean containsWord(String text, String word) {
+    public static boolean containsWord(String text, String word) {
         for (int i = text.indexOf(word); i >= 0; i = text.indexOf(word, i + 1)) {
             int end = i + word.length();
             boolean okBefore = i == 0 || (!wordChar(text.charAt(i - 1)) && text.charAt(i - 1) != '.');

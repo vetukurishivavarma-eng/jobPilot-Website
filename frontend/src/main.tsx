@@ -9,6 +9,7 @@ import ProfilePage from './pages/ProfilePage'
 import ResumesPage from './pages/ResumesPage'
 import JobsPage from './pages/JobsPage'
 import CompaniesPage from './pages/CompaniesPage'
+import TailorPage from './pages/TailorPage'
 import ApplicationsPage, { ApplicationPage } from './pages/ApplicationsPage'
 
 function App() {
@@ -29,6 +30,7 @@ function App() {
           <Route path="/register" element={user ? <Navigate to="/jobs" /> : <AuthPage mode="register" />} />
           <Route element={user ? <Shell /> : <Navigate to="/login" />}>
             <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/jobs/:id/tailor" element={<TailorPage />} />
             <Route path="/companies" element={<CompaniesPage />} />
             <Route path="/applications" element={<ApplicationsPage />} />
             <Route path="/applications/:id" element={<ApplicationPage />} />

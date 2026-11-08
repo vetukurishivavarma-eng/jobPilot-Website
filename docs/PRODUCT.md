@@ -19,7 +19,7 @@ Benchmarked against aiapply.co (public pages read 2026-11-08). Their features ar
 ## Roadmap (each step ships on its own)
 1. ✅ **Auto-apply, step 2**: fill the real form in a visible browser; the user approves and submits (CAPTCHA stays with the user).
 2. ✅ **Match score**: 0–100 per job (skills, years, seniority, location, salary, notice), with reasons. Doubles as the "resume vs JD" checker.
-3. **Tailored resume and cover letter** per job: facts only, shown as a diff, PDF/DOCX export, which resume went where.
+3. ✅ **Tailored resume and cover letter** per job: facts only, shown as a diff, PDF/DOCX export, which resume went where.
 4. **Profile import** from an uploaded resume or LinkedIn's data-export ZIP (the user downloads their own data).
 5. **Tracker dashboard**: status timeline per application, follow-up reminders.
 6. **Mock interview coach** (role questions, scored feedback) and small tools (follow-up email, interview question generator).

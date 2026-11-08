@@ -1,6 +1,6 @@
 # JobPilot AI — Progress
 
-## RESUME HERE (2026-11-08, apply agent + match score + auto mode done; plan in docs/PRODUCT.md)
+## RESUME HERE (2026-11-08, apply agent, match score, auto mode, tailored resume and cover letter done; plan in docs/PRODUCT.md)
 
 **Phases 1 and 2 are done. The apply agent (Phase 5) is in progress**, at the user's request, ahead of Phases 3 and 4.
 19 backend tests pass and the frontend builds.
@@ -34,9 +34,19 @@
 - **Dry run now blocks ALL non-GET requests** (since auto mode presses Submit). Live run on Groww: prepared the best match, waited for 3 answers, then on the next run filled, pressed Submit, didn't get confirmation (the resume upload to S3 was blocked, so the form refused) and handed over correctly. The second job reused the answers and came out READY immediately.
 - Not visually checked: the Chrome window was minimized (viewport 0x0) at the end. Builds and typechecks.
 
+### Tailored resume + cover letter, DONE (package `tailor/`, V6)
+- `Tailor` (pure): skills (job's skills first, plus skills from the user's own resume unless already covered, e.g. Spring inside Spring Boot; never anything else), bullets (stable reorder by job keywords, then an AI rewrite), summary (AI, `summaryOnly` strips echoed header lines), cover letter (AI with one retry naming the problems, otherwise a factual template).
+- **Fact check** (`Tailor.FactCheck`): numbers and number words must appear in the user's facts; skills must be the user's. For bullets it's stricter: only skills named in *that role's* text, and `sameClaim` (≥50% of the original's 5-letter stems survive). Failing AI output is discarded (resume) or flagged (letter), with a note.
+- **Live with qwen2.5:3b:** round 1 invented Zeta Labs bullets (Java/Kafka "payments processing"); the global-skill check missed it. The per-role check plus sameClaim now catch it (regression test). It had also flipped "by 40%" to "to 40%"; the prompt now asks it to copy number phrases verbatim. The cover letter's AWS/Docker are legitimately in the demo resume.
+- `Render`: PDF (PDFBox Helvetica; unsupported characters mapped or replaced, ₹→Rs), DOCX (hand-written WordprocessingML), TXT. PDF checked visually: clean, single column, ATS-readable.
+- API: `GET /api/jobs/{id}/documents`, `POST …/documents/resume|letter` (regenerate), `PUT /api/documents/{id}/resume` (per-section useTailored and optional edited text), `PUT …/letter`, `GET /api/documents/{id}/file?format=pdf|docx|txt`.
+- Apply agent: a job's tailored resume (as PDF, "<Name> - Resume.pdf") is attached instead of the default, and cover-letter textareas get the job's letter (source LETTER).
+- UI: /jobs/:id/tailor (a "Tailor resume & cover letter" link in the expanded job card). Resume tab shows original vs tailored per section, click to choose, tailored text editable, fact-check notes, downloads. Letter tab: source, warnings, editable, rewrite, downloads. **Not visually checked in the browser** (Chrome tab was closed). Typecheck/build pass.
+- Tests set `ollama-url: http://127.0.0.1:9` so they never call the real model.
+
 ### NEXT
-1. **First real application** with the user's real profile (APPLY_DRY_RUN off). Confirm detection on a real thank-you page.
-2. Roadmap step 3: tailored resume and cover letter per job (facts only, shown as a diff).
+1. **First real application** with the user's real profile (APPLY_DRY_RUN off).
+2. Roadmap step 4: profile import from resume / LinkedIn export (so tailoring has structured experience without manual typing).
 
 ### Phase 2 facts worth remembering
 - Live numbers: Databricks board has 922 jobs; 39 matched "Backend Engineer, Data Scientist". The first full sync takes ~23s, re-runs ~13s.

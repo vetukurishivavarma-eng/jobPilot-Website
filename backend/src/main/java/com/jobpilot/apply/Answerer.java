@@ -18,13 +18,20 @@ final class Answerer {
     private Answerer() {}
 
     record Candidate(String fullName, String email, ProfileDto profile, String resumeId, String resumeLabel, String resumeText) {}
-    record JobInfo(String title, String company, String description) {}
+    /** @param coverLetter the user's cover letter for this job, if they wrote one */
+    record JobInfo(String title, String company, String description, String coverLetter) {
+        JobInfo(String title, String company, String description) { this(title, company, description, null); }
+    }
 
     static final String NEED_INPUT = "NEED_INPUT";
 
     static List<FormField> answer(List<FormField> fields, Candidate c, JobInfo job, Map<String, String> bank, Function<String, String> ai) {
         List<FormField> out = new ArrayList<>();
         for (FormField f : fields) {
+            if (job.coverLetter() != null && f.type().equals("TEXTAREA") && f.label().toLowerCase().contains("cover")) {
+                out.add(f.answered(job.coverLetter(), "LETTER"));
+                continue;
+            }
             String v = fromProfile(f, c);
             if (v != null) { out.add(f.answered(v, "PROFILE")); continue; }
             v = valid(f, bank.get(AnswerBank.key(f.label(), job.company())));

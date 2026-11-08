@@ -16,6 +16,7 @@ const SOURCE: Record<string, [string, string]> = {
   BANK: ['you answered this before', 'text-muted'],
   AI: ['AI draft: check it', 'text-amber-700 font-semibold'],
   USER: ['your answer', 'text-signal'],
+  LETTER: ['your cover letter for this job', 'text-signal'],
 }
 
 export function StatusBadge({ s }: { s: ApplicationStatus }) {

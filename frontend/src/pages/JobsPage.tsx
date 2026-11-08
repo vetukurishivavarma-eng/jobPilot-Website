@@ -230,6 +230,9 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
               <div className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-md bg-paper p-3 text-sm leading-relaxed">
                 {detail.description || 'No description.'}
               </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link to={`/jobs/${j.id}/tailor`} className="btn-ghost">Tailor resume & cover letter</Link>
+              </div>
               {detail.applyUrl && !j.closedAt && (
                 <a className="btn mt-3" href={detail.applyUrl} target="_blank" rel="noreferrer">Open application page ↗</a>
               )}

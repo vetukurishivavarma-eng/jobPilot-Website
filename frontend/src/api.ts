@@ -43,7 +43,7 @@ export type ManualJob = { title: string; company: string; location: string; url:
 
 export type FormField = {
   key: string; label: string; type: 'TEXT' | 'TEXTAREA' | 'FILE' | 'SELECT' | 'MULTISELECT'; required: boolean
-  options: string[]; value: string | null; source: 'PROFILE' | 'BANK' | 'AI' | 'USER' | null
+  options: string[]; value: string | null; source: 'PROFILE' | 'BANK' | 'AI' | 'USER' | 'LETTER' | null
 }
 export type ApplicationStatus = 'NEEDS_INPUT' | 'READY' | 'FILLING' | 'SUBMITTED' | 'FAILED'
 export type Application = {
@@ -60,6 +60,15 @@ export type AutoSettings = {
   enabled: boolean; autoSubmit: boolean; minScore: number; dailyLimit: number
   running: boolean; submittedToday: number; lastRunAt: string | null; lastSummary: AutoSummary | null
 }
+
+export type Choice = { original: string; tailored: string | null; useTailored: boolean; why: string | null }
+export type TailoredResume = {
+  name: string; contact: string; headline: string | null; summary: Choice; skills: Choice
+  experiences: { heading: string; meta: string; bullets: Choice }[]; education: string[]; notes: string[]
+}
+export type CoverLetter = { text: string; source: 'AI' | 'TEMPLATE' | 'USER'; warnings: string[] }
+export type TailoredDoc = { id: string; kind: 'RESUME' | 'LETTER'; resume: TailoredResume | null; letter: CoverLetter | null; updatedAt: string }
+export type SectionPick = { useTailored: boolean; text?: string }
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fields?: Record<string, string>) {
@@ -129,6 +138,19 @@ export const api = {
   createApplication: (jobId: string) => request<Application>('POST', '/applications', { jobId }),
   saveAnswers: (id: string, answers: Record<string, string>) => request<Application>('PUT', `/applications/${id}/answers`, { answers }),
   deleteApplication: (id: string) => request<void>('DELETE', `/applications/${id}`),
+  jobDocuments: (jobId: string) => request<{ resume: TailoredDoc | null; letter: TailoredDoc | null }>('GET', `/jobs/${jobId}/documents`),
+  tailorResume: (jobId: string) => request<TailoredDoc>('POST', `/jobs/${jobId}/documents/resume`),
+  writeLetter: (jobId: string) => request<TailoredDoc>('POST', `/jobs/${jobId}/documents/letter`),
+  saveResumeChoices: (id: string, c: { summary: SectionPick; skills: SectionPick; experiences: SectionPick[] }) => request<TailoredDoc>('PUT', `/documents/${id}/resume`, c),
+  saveLetter: (id: string, text: string) => request<TailoredDoc>('PUT', `/documents/${id}/letter`, { text }),
+  downloadDocument: async (id: string, format: 'pdf' | 'docx' | 'txt') => {
+    const res = await fetch(`/api/documents/${id}/file?format=${format}`, { headers: { Authorization: `Bearer ${token.get()}` } })
+    if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_FAILED', 'Download failed')
+    const name = /filename\*=UTF-8''([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]
+    const url = URL.createObjectURL(await res.blob())
+    Object.assign(document.createElement('a'), { href: url, download: name ? decodeURIComponent(name) : `document.${format}` }).click()
+    URL.revokeObjectURL(url)
+  },
   getAuto: () => request<AutoSettings>('GET', '/auto-apply'),
   saveAuto: (s: Pick<AutoSettings, 'enabled' | 'autoSubmit' | 'minScore' | 'dailyLimit'>) => request<AutoSettings>('PUT', '/auto-apply', s),
   runAuto: () => request<AutoSettings>('POST', '/auto-apply/run'),

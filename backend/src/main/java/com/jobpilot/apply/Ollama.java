@@ -22,7 +22,7 @@ public class Ollama {
 
     Ollama(AppProperties props) { this.props = props; }
 
-    String generate(String prompt) {
+    public String generate(String prompt) {
         ObjectNode body = FormReader.JSON.createObjectNode()
                 .put("model", props.ollamaModel()).put("prompt", prompt).put("stream", false);
         body.putObject("options").put("temperature", 0.3);

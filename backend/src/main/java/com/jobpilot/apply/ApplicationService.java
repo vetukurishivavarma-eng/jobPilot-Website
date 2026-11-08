@@ -12,6 +12,7 @@ import com.jobpilot.resume.Resume;
 import com.jobpilot.resume.ResumeFiles;
 import com.jobpilot.resume.ResumeRepository;
 import com.jobpilot.shared.ApiException;
+import com.jobpilot.tailor.TailorService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -43,11 +44,13 @@ public class ApplicationService {
     private final TransactionTemplate tx;
     private final BrowserFiller filler;
     private final ResumeFiles files;
+    private final TailorService tailor;
     final Path screenshots;
 
     ApplicationService(ApplicationRepository apps, AnswerBankRepository bank, JobRepository jobs, UserJobRepository links,
                        UserRepository users, ProfileRepository profiles, ResumeRepository resumes, Ollama ollama, TransactionTemplate tx,
-                       BrowserFiller filler, ResumeFiles files, AppProperties props) {
+                       BrowserFiller filler, ResumeFiles files, AppProperties props, TailorService tailor) {
+        this.tailor = tailor;
         this.apps = apps;
         this.bank = bank;
         this.jobs = jobs;
@@ -80,9 +83,12 @@ public class ApplicationService {
         Answerer.Candidate c = candidate(userId);
         if (c.resumeId() == null)
             throw new ApiException(HttpStatus.CONFLICT, "NO_RESUME", "Upload a resume first. Every application needs one.");
+        if (tailor.resumePdf(userId, jobId).isPresent()) // the job's tailored resume is attached instead of the default one
+            c = new Answerer.Candidate(c.fullName(), c.email(), c.profile(), c.resumeId(), "Tailored resume for " + job.company(), c.resumeText());
         Map<String, String> known = bank.findByUserId(userId).stream().collect(Collectors.toMap(b -> b.questionKey, b -> b.answer, (x, y) -> x));
         // ponytail: answers are generated inside the call (a few seconds per open question on a 3B model); queue it if forms grow
-        List<FormField> filled = Answerer.answer(form, c, new Answerer.JobInfo(job.title(), job.company(), job.description()), known, ollama::generate);
+        List<FormField> filled = Answerer.answer(form, c, new Answerer.JobInfo(job.title(), job.company(), job.description(),
+                tailor.coverLetter(userId, jobId).orElse(null)), known, ollama::generate);
 
         Application a = new Application(userId, job.id());
         a.resumeId = UUID.fromString(c.resumeId());
@@ -112,8 +118,15 @@ public class ApplicationService {
         try {
             // the site sees the original file name, so write the bytes to a temp file with that name
             dir = Files.createTempDirectory("jobpilot-resume");
-            resume = dir.resolve(r.originalFilename().replaceAll("[\\\\/:*?\"<>|]", "_"));
-            Files.write(resume, files.read(r.storageKey()));
+            Optional<byte[]> tailored = tailor.resumePdf(userId, job.id());
+            if (tailored.isPresent()) { // the job's tailored resume goes instead of the default one
+                String name = users.findById(userId).map(User::getFullName).orElse("Resume");
+                resume = dir.resolve((name + " - Resume.pdf").replaceAll("[\\\\/:*?\"<>|]", "_"));
+                Files.write(resume, tailored.get());
+            } else {
+                resume = dir.resolve(r.originalFilename().replaceAll("[\\\\/:*?\"<>|]", "_"));
+                Files.write(resume, files.read(r.storageKey()));
+            }
             Files.createDirectories(screenshots);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
