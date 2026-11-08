@@ -29,3 +29,9 @@ jobpilot:
   jwt-ttl-hours: ${JWT_TTL_HOURS:24}
   storage-dir: ${STORAGE_DIR:./data/resumes}
   cors-origins: ${CORS_ORIGINS:http://localhost:5173}
+  # Optional: Adzuna job search (free key at https://developer.adzuna.com). Without it only followed company boards are used.
+  adzuna-app-id: ${ADZUNA_APP_ID:}
+  adzuna-app-key: ${ADZUNA_APP_KEY:}
+  adzuna-country: ${ADZUNA_COUNTRY:in}
+  # Background discovery for every user (Spring cron; "-" disables it).
+  discovery-cron: ${DISCOVERY_CRON:0 0 */6 * * *}

@@ -19,7 +19,8 @@ public final class JdParser {
 
     public record Parsed(List<String> skills, Integer minYears, String seniority, String educationLevel) {}
 
-    private record Skill(String name, Pattern pattern) {}
+    /** Aliases: {@code lower} match case-insensitively, {@code exact} (prefixed = in skills.txt) case-sensitively. */
+    private record Skill(String name, List<String> lower, List<String> exact) {}
 
     private static final List<Skill> SKILLS = load();
 
@@ -31,14 +32,13 @@ public final class JdParser {
                 line = line.strip();
                 if (line.isEmpty() || line.startsWith("#")) continue;
                 String[] parts = line.split("\\|");
-                List<String> alts = new ArrayList<>();
+                List<String> lower = new ArrayList<>(), exact = new ArrayList<>();
                 for (int i = 1; i < parts.length; i++) {
                     String a = parts[i].strip();
-                    // (?-i:...) = case-sensitive alias
-                    alts.add(a.startsWith("=") ? "(?-i:" + Pattern.quote(a.substring(1)) + ")" : Pattern.quote(a));
+                    if (a.startsWith("=")) exact.add(a.substring(1));
+                    else lower.add(a.toLowerCase(Locale.ROOT));
                 }
-                out.add(new Skill(parts[0].strip(), Pattern.compile(
-                        "(?<![A-Za-z0-9+#.])(?:" + String.join("|", alts) + ")(?![A-Za-z0-9+#])", Pattern.CASE_INSENSITIVE)));
+                out.add(new Skill(parts[0].strip(), List.copyOf(lower), List.copyOf(exact)));
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -55,11 +55,30 @@ public final class JdParser {
         String t = title == null ? "" : title;
         String text = t + "\n" + (description == null ? "" : description);
 
+        // indexOf + boundary check instead of one regex per skill: regexes cost ~76 ms on a typical 6 KB posting
+        String lowerText = text.toLowerCase(Locale.ROOT);
         List<String> skills = new ArrayList<>();
-        for (Skill s : SKILLS) if (s.pattern.matcher(text).find()) skills.add(s.name);
+        for (Skill s : SKILLS)
+            if (s.lower.stream().anyMatch(a -> containsWord(lowerText, a)) || s.exact.stream().anyMatch(a -> containsWord(text, a)))
+                skills.add(s.name);
 
         Integer minYears = minYears(text);
         return new Parsed(skills, minYears, seniority(t, minYears), education(text));
+    }
+
+    /** Whole-word match: not preceded by [A-Za-z0-9+#.] and not followed by [A-Za-z0-9+#]. */
+    static boolean containsWord(String text, String word) {
+        for (int i = text.indexOf(word); i >= 0; i = text.indexOf(word, i + 1)) {
+            int end = i + word.length();
+            boolean okBefore = i == 0 || (!wordChar(text.charAt(i - 1)) && text.charAt(i - 1) != '.');
+            boolean okAfter = end == text.length() || !wordChar(text.charAt(end));
+            if (okBefore && okAfter) return true;
+        }
+        return false;
+    }
+
+    private static boolean wordChar(char c) {
+        return c < 128 && (Character.isLetterOrDigit(c) || c == '+' || c == '#');
     }
 
     /** Largest "N+ years ... experience" lower bound: a posting asking 5+ years overall and 2 in Python needs 5. */

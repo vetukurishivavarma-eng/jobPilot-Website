@@ -7,6 +7,8 @@ import { SessionCtx, useSession } from './session'
 import AuthPage from './pages/AuthPage'
 import ProfilePage from './pages/ProfilePage'
 import ResumesPage from './pages/ResumesPage'
+import JobsPage from './pages/JobsPage'
+import CompaniesPage from './pages/CompaniesPage'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -22,13 +24,15 @@ function App() {
     <SessionCtx.Provider value={{ user, setUser }}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={user ? <Navigate to="/profile" /> : <AuthPage mode="login" />} />
-          <Route path="/register" element={user ? <Navigate to="/profile" /> : <AuthPage mode="register" />} />
+          <Route path="/login" element={user ? <Navigate to="/jobs" /> : <AuthPage mode="login" />} />
+          <Route path="/register" element={user ? <Navigate to="/jobs" /> : <AuthPage mode="register" />} />
           <Route element={user ? <Shell /> : <Navigate to="/login" />}>
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/companies" element={<CompaniesPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/resumes" element={<ResumesPage />} />
           </Route>
-          <Route path="*" element={<Navigate to={user ? '/profile' : '/login'} />} />
+          <Route path="*" element={<Navigate to={user ? '/jobs' : '/login'} />} />
         </Routes>
       </BrowserRouter>
     </SessionCtx.Provider>
@@ -48,6 +52,8 @@ function Shell() {
             JobPilot<span className="text-signal">.</span>
           </span>
           <nav className="flex gap-1">
+            <NavLink to="/jobs" className={link}>Jobs</NavLink>
+            <NavLink to="/companies" className={link}>Companies</NavLink>
             <NavLink to="/profile" className={link}>Profile</NavLink>
             <NavLink to="/resumes" className={link}>Resumes</NavLink>
           </nav>

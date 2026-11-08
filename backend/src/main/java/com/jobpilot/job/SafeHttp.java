@@ -19,7 +19,8 @@ public class SafeHttp {
         public FetchException(int status, String msg) { super(msg); this.status = status; }
     }
 
-    static final int MAX_BYTES = 3_000_000;
+    static final int MAX_BYTES = 3_000_000;          // pages users link to
+    static final int MAX_API_BYTES = 30_000_000;     // whole ATS boards with descriptions (big boards run 10+ MB)
     static final String UA = "JobPilotBot/0.1 (job discovery; respects robots and ATS public APIs)";
 
     private static final HttpClient CLIENT = HttpClient.newBuilder()
@@ -29,22 +30,22 @@ public class SafeHttp {
 
     /** GET a fixed, trusted API URL (follows up to 3 redirects). */
     public static String get(String url) {
-        return fetch(URI.create(url), false);
+        return fetch(URI.create(url), false, MAX_API_BYTES);
     }
 
     /** GET a URL a user typed. */
     public static String getUserUrl(String url) {
         URI uri;
         try { uri = new URI(url.trim()); } catch (URISyntaxException e) { throw new FetchException(400, "That is not a valid URL"); }
-        return fetch(uri, true);
+        return fetch(uri, true, MAX_BYTES);
     }
 
-    private static String fetch(URI uri, boolean guard) {
+    private static String fetch(URI uri, boolean guard, int maxBytes) {
         for (int hop = 0; hop < 4; hop++) {
             if (guard) checkPublic(uri);
             HttpResponse<InputStream> res;
             try {
-                res = CLIENT.send(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(15))
+                res = CLIENT.send(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(guard ? 15 : 60))
                         .header("User-Agent", UA).header("Accept", "application/json, text/html;q=0.9, */*;q=0.5").GET().build(),
                         HttpResponse.BodyHandlers.ofInputStream());
             } catch (IOException e) {
@@ -65,8 +66,8 @@ public class SafeHttp {
                 throw new FetchException(s, uri.getHost() + " answered HTTP " + s);
             }
             try (InputStream in = res.body()) {
-                byte[] b = in.readNBytes(MAX_BYTES + 1);
-                if (b.length > MAX_BYTES) throw new FetchException(413, "Page is too large");
+                byte[] b = in.readNBytes(maxBytes + 1);
+                if (b.length > maxBytes) throw new FetchException(413, "Page is too large");
                 return new String(b, StandardCharsets.UTF_8);
             } catch (IOException e) {
                 throw new FetchException(502, "Read failed from " + uri.getHost());

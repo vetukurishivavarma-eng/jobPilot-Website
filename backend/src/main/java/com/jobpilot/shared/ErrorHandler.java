@@ -22,6 +22,13 @@ public class ErrorHandler {
         return ResponseEntity.status(e.status).body(new ApiError(e.code, e.getMessage(), null));
     }
 
+    /** Upstream fetch failures: the user's own mistakes keep their status, anything else is a bad gateway. */
+    @ExceptionHandler(com.jobpilot.job.SafeHttp.FetchException.class)
+    ResponseEntity<ApiError> fetch(com.jobpilot.job.SafeHttp.FetchException e) {
+        int s = e.status == 400 || e.status == 413 || e.status == 422 ? e.status : 502;
+        return ResponseEntity.status(s).body(new ApiError("FETCH_FAILED", e.getMessage(), null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiError> invalid(MethodArgumentNotValidException e) {
         Map<String, String> fields = e.getBindingResult().getFieldErrors().stream()

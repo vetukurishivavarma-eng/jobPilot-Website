@@ -91,7 +91,7 @@ Data Warehousing|data warehouse|data warehousing
 Tableau|tableau
 Power BI|power bi|powerbi
 Looker|looker
-Excel|excel|ms excel|microsoft excel
+Excel|=Excel|ms excel|microsoft excel|excel spreadsheets|advanced excel
 Statistics|statistics|statistical
 A/B Testing|a/b testing|ab testing|experimentation
 AWS|aws|amazon web services
@@ -130,7 +130,7 @@ Android|android
 iOS|=iOS|ios development
 Figma|figma
 UI/UX|ui/ux|ux design|ui design|user experience|user interface design
-Product Management|product management|product roadmap
+Product Management|product roadmap|product management experience|experience in product management|product management skills
 Agile|agile|scrum|kanban
 JIRA|jira
 Project Management|project management|pmp

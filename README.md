@@ -14,7 +14,7 @@ Enter your professional details and upload your resume once. The agent finds job
 
 Architecture, DB schema, API contracts and the phase plan: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-**Status: Phase 1 done.** Auth, PostgreSQL, profile management, and resume upload with text extraction all work.
+**Status: Phases 1–2 done.** Auth, profile, resumes (Phase 1); job discovery from followed Greenhouse/Lever company boards, optional Adzuna search, add-by-link or paste-in, and deterministic requirement parsing (Phase 2).
 
 ---
 
@@ -53,6 +53,9 @@ export JWT_SECRET="$(openssl rand -base64 48)"   # PowerShell: $env:JWT_SECRET =
 | `STORAGE_DIR` | `./data/resumes` | where resume files are written |
 | `CORS_ORIGINS` | `http://localhost:5173` | comma separated; only needed if the frontend is on another origin |
 | `PORT` | `8080` | |
+| `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` | empty | optional; free key at developer.adzuna.com. Without it only followed company boards are searched |
+| `ADZUNA_COUNTRY` | `in` | Adzuna country code |
+| `DISCOVERY_CRON` | `0 0 */6 * * *` | background discovery for all users (Spring cron, `-` disables) |
 
 Health check: `GET /actuator/health`.
 
@@ -94,3 +97,6 @@ On a single VM (any cloud), put Caddy or nginx with TLS in front of port 3000. O
 - No login rate limiting, email verification or password reset yet.
 - Resume files are stored on local disk: fine for one instance, move to object storage (S3/GCS) to scale out.
 - Scanned (image-only) PDFs give no text. The UI flags them; OCR is a later addition.
+- Background discovery runs users one after another and refetches a board once per follower. Batch by board when there are many users.
+- Job writes are serialised by one in-process lock (`JobStore`). That's fine for one instance; switch to per-board DB locks before running several.
+- Pasted links are checked against private IPs before fetching, but deploy behind an egress policy that blocks private ranges (DNS-rebinding window, see `SafeHttp`).

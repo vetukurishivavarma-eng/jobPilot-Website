@@ -6,3 +6,4 @@ spring:
 jobpilot:
   jwt-secret: test-secret-test-secret-test-secret-123456
   storage-dir: ./target/test-resumes
+  discovery-cron: "-"

@@ -164,9 +164,17 @@ public final class JobSources {
         BoardRef ref = parseBoardUrl(url);
         if (ref != null && ref.jobId() != null)
             return ref.ats() == Ats.GREENHOUSE ? greenhouseJob(ref.token(), ref.jobId()) : leverJob(ref.token(), ref.jobId());
-        JobDraft d = parseJsonLd(SafeHttp.getUserUrl(url), url);
-        if (d == null) throw new SafeHttp.FetchException(422,
-                "This page doesn't publish job data we can read (many sites like LinkedIn block it). Use \"Add manually\" and paste the description.");
+        String unreadable = "This page doesn't publish job data we can read (many sites like LinkedIn block it). Paste the job description in instead.";
+        String html;
+        try {
+            html = SafeHttp.getUserUrl(url);
+        } catch (SafeHttp.FetchException e) {
+            // the site refused us (403/404/999...), as opposed to a bad link (400) or our own limits (413)
+            if (e.status > 400 && e.status != 413) throw new SafeHttp.FetchException(422, unreadable);
+            throw e;
+        }
+        JobDraft d = parseJsonLd(html, url);
+        if (d == null) throw new SafeHttp.FetchException(422, unreadable);
         return d;
     }
 

@@ -33,8 +33,8 @@
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Auth (JWT), PostgreSQL + Flyway, profile management, resume upload + text extraction | **Done** |
-| 2 | Job discovery: job sources (public job APIs/feeds + user-pasted URLs), `jobs` table, dedupe, JD parsing into structured requirements | Next |
-| 3 | Matching: compatibility score (skills, experience, location, salary, notice), explanation per score, best-resume selection | |
+| 2 | Job discovery: followed Greenhouse/Lever boards, Adzuna search (optional key), add by link (ATS API or schema.org JobPosting) or paste-in, dedupe, deterministic JD parsing | **Done** |
+| 3 | Matching: compatibility score (skills, experience, location, salary, notice), explanation per score, best-resume selection | Next |
 | 4 | Tailoring: per-job wording suggestions from existing resume facts only, diffed for the user to approve | |
 | 5 | Application agent: LangGraph worker + Playwright form filling, screening answers from verified data, submit, screenshots | |
 | 6 | Tracking: application status timeline, email/portal status sync, dashboard | |
@@ -89,8 +89,15 @@ users ─────────┬──────────────�
 - `storage_key` is a random UUID; files never use user-supplied names on disk.
 - `extracted_text` is what Phase 3 matching and Phase 5 answering read. It is empty for scanned PDFs, and the UI warns about that.
 
-**Planned (Phase 2–6), for orientation only, not yet migrated:**
-`job_sources`, `jobs` (source, external_id UNIQUE per source, title, company, location, salary range, description, parsed_requirements JSONB, posted_at), `job_matches` (user_id, job_id, score, breakdown JSONB, chosen_resume_id), `applications` (user_id, job_id, resume_id, status, submitted_at), `application_events` (application_id, type, payload JSONB, screenshot_key, at), `screening_answers` (application_id, question, answer, source_fields), `agent_tasks` (queue: type, payload, status, locked_at, attempts).
+**Phase 2 (V2__jobs.sql):**
+- `jobs`: global, UNIQUE (source, external_id); `board` (e.g. `greenhouse:groww`) lets a full board sync close jobs that vanished (`closed_at`) and reopen ones that return. Parsed requirements are `min_years`, `seniority`, `education_level` plus `job_skills`, recomputed only when title/description change.
+- `user_jobs`: a user's link to a job (origin COMPANY | SEARCH | IMPORT, status NEW | SAVED | DISMISSED), UNIQUE (user_id, job_id).
+- `company_sources`: boards a user follows (ats GREENHOUSE | LEVER, token, last_synced_at, last_error).
+
+Sources, and why: Greenhouse/Lever public board APIs and Adzuna's official API allow this use. Pages users paste are read via their schema.org `JobPosting` JSON-LD. Remotive is excluded because its terms forbid showing jobs behind a signup. LinkedIn and Naukri aren't scraped (against their terms), so users paste those in. Board jobs are linked only when the title matches a desired role: token subset after normalising developer/dev/programmer → engineer, front/back/full stack, SDE/SWE, ignoring seniority words. No desired roles means every job is linked. Adzuna runs desired roles × locations, capped at 3 × 3.
+
+**Planned (Phase 3–6), for orientation only, not yet migrated:**
+`job_matches` (user_id, job_id, score, breakdown JSONB, chosen_resume_id), `applications` (user_id, job_id, resume_id, status, submitted_at), `application_events` (application_id, type, payload JSONB, screenshot_key, at), `screening_answers` (application_id, question, answer, source_fields), `agent_tasks` (queue: type, payload, status, locked_at, attempts).
 
 ## 5. API contracts (Phase 1)
 
@@ -163,9 +170,36 @@ Resume = { id, label, originalFilename, contentType, sizeBytes, primary: boolean
 - Up to 10 resumes per user. The first upload becomes primary. Deleting the primary promotes the newest remaining one.
 - Files live in `STORAGE_DIR` (a Docker volume). Bytes are deleted only after the DB delete commits.
 
+### Jobs & discovery (Phase 2)
+
+```ts
+Job = { id, title, company, location, workplace: 'REMOTE'|'HYBRID'|'ONSITE'|null, employmentType, salaryMin, salaryMax, salaryCurrency,
+        source: 'greenhouse'|'lever'|'adzuna'|'web'|'manual', url, applyUrl, postedAt, discoveredAt, closedAt,
+        status: 'NEW'|'SAVED'|'DISMISSED', origin: 'COMPANY'|'SEARCH'|'IMPORT',
+        skills: string[], minYears, seniority, educationLevel, description /* detail only */ }
+SourceResult = { source: 'company'|'adzuna', label, fetched, linked, error: string|null }
+Company = { id, ats: 'GREENHOUSE'|'LEVER', token, name, boardUrl, lastSyncedAt, lastError }
+```
+
+| Method | Path | Body / query | Response |
+|---|---|---|---|
+| GET | `/jobs` | `status=ACTIVE(default: new+saved)\|NEW\|SAVED\|DISMISSED\|ALL`, `q`, `includeClosed`, `page`, `size≤100` | 200 `{items: Job[], total, page, size}`, newest posted first |
+| GET | `/jobs/{id}` | — | 200 `Job` with description |
+| PATCH | `/jobs/{id}` | `{status}` | 200 `Job` |
+| POST | `/jobs/import` | `{url}` | 201 `Job`; 422 `FETCH_FAILED` if the page has no readable job data or blocks us |
+| POST | `/jobs/manual` | `{title, company, location?, url?, description}` | 201 `Job` |
+| POST | `/discovery/run` | — | 200 `SourceResult[]`; 409 `ALREADY_RUNNING` |
+| GET | `/companies` | — | 200 `Company[]` |
+| GET | `/companies/suggestions` | — | 200 `{ats, token, name, following}[]` |
+| POST | `/companies` | `{url}` or `{ats, token}` | 201 `{company, sync: SourceResult}`; 409 `ALREADY_FOLLOWING`/`COMPANY_LIMIT` (50); 422 `BOARD_NOT_FOUND` |
+| DELETE | `/companies/{id}` | — | 204 (jobs already in the list stay) |
+
+Fetch failures return `FETCH_FAILED`: 400 for bad or private links, 413 for oversize pages, 422 for unreadable pages, 502 for upstream errors.
+
 ## 6. Security notes
 
 - BCrypt password hashes; stateless JWT; CSRF off because no cookies are used.
 - The token lives in `localStorage`, which is simple but readable by any XSS. React escapes output, and there is no `dangerouslySetInnerHTML`. Move to an httpOnly cookie + CSRF token if third-party scripts are ever added.
 - Ownership is checked in every resume query (`findByIdAndUserId`). Other users' resources return 404.
+- User-supplied links go through `SafeHttp.getUserUrl`: http(s) only, ports 80/443, no credentials in the URL, every resolved IP must be public (rejects loopback, RFC1918, link-local/metadata, CGNAT, ULA, IPv4-mapped), and redirects are re-checked on every hop. Responses are capped at 3 MB. Trusted ATS/Adzuna calls are capped at 30 MB.
 - Not done yet: login rate limiting / lockout, email verification, password reset. All three are needed before a public launch.
