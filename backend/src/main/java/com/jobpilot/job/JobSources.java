@@ -32,7 +32,7 @@ public final class JobSources {
     private static final Pattern GH_URL = Pattern.compile("^https?://(?:job-boards|boards)(?:\\.eu)?\\.greenhouse\\.io/([A-Za-z0-9_-]+)(?:/jobs/(\\d+))?/?(?:[?#].*)?$");
     private static final Pattern LEVER_URL = Pattern.compile("^https?://jobs\\.lever\\.co/([A-Za-z0-9_-]+)(?:/([0-9a-f-]{36}))?(?:/apply)?/?(?:[?#].*)?$");
 
-    public enum Ats { GREENHOUSE, LEVER }
+    public enum Ats { GREENHOUSE, LEVER, WORKDAY }
 
     public record BoardRef(Ats ats, String token, String jobId) {}
 
@@ -125,6 +125,102 @@ public final class JobSources {
                 str(j.path("text")), company, location, workplaceFrom(location, str(j.path("workplaceType"))),
                 str(cat.path("commitment")), min, max, cur, blankToNull(d.toString().strip()),
                 created > 0 ? Instant.ofEpochMilli(created) : null);
+    }
+
+    // ---------------------------------------------------------------- Workday (the JSON API its own careers pages call)
+
+    static final int WORKDAY_MAX_JOBS = 400, WORKDAY_PAGE = 20; // Workday rejects pages over 20
+    private static final Pattern WORKDAY_TOKEN = Pattern.compile("([a-z0-9-]+)\\.(wd\\d+)/([A-Za-z0-9_-]+)");
+    private static final Pattern INDIA = Pattern.compile("(?i)\\bindia\\b");
+
+    /**
+     * A Workday careers site's India openings. {@code token} is "tenant.wdN/site", from the site's URL
+     * (https://tenant.wdN.myworkdayjobs.com/site). Lists through the site's location facet, then reads each job.
+     */
+    public static List<JobDraft> workdayBoard(String token, String company) {
+        Matcher m = WORKDAY_TOKEN.matcher(token);
+        if (!m.matches()) throw new IllegalArgumentException("Workday token must be tenant.wdN/site: " + token);
+        String host = "https://" + m.group(1) + "." + m.group(2) + ".myworkdayjobs.com";
+        String api = host + "/wday/cxs/" + m.group(1) + "/" + m.group(3);
+
+        Map.Entry<String, List<String>> india = indiaFacet(JSON.readTree(SafeHttp.postJson(api + "/jobs", workdaySearch(null, 0, 1))));
+        if (india == null) return List.of();
+        List<String> paths = new ArrayList<>();
+        for (int offset = 0, total = 1; offset < Math.min(total, WORKDAY_MAX_JOBS); offset += WORKDAY_PAGE) {
+            JsonNode page = JSON.readTree(SafeHttp.postJson(api + "/jobs", workdaySearch(india, offset, WORKDAY_PAGE)));
+            total = page.path("total").asInt(0);
+            if (page.path("jobPostings").isEmpty()) break;
+            for (JsonNode p : page.path("jobPostings")) if (str(p.path("externalPath")) != null) paths.add(str(p.path("externalPath")));
+        }
+        // ponytail: one request per job (Workday's list has no descriptions), 4 at a time; cache by externalPath if boards grow
+        java.util.concurrent.Semaphore gate = new java.util.concurrent.Semaphore(4);
+        try (var ex = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            List<java.util.concurrent.Future<JobDraft>> fs = new ArrayList<>();
+            for (String path : paths) fs.add(ex.submit(() -> {
+                gate.acquire();
+                try { return parseWorkdayJob(SafeHttp.get(api + path), token, company, host + "/" + m.group(3) + path); }
+                catch (SafeHttp.FetchException e) { return null; } // one unreadable job doesn't sink the board
+                finally { gate.release(); }
+            }));
+            List<JobDraft> out = new ArrayList<>();
+            for (var f : fs) { JobDraft d = f.get(); if (d != null) out.add(d); }
+            return out;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SafeHttp.FetchException(502, "Interrupted");
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw e.getCause() instanceof RuntimeException r ? r : new IllegalStateException(e.getCause());
+        }
+    }
+
+    private static String workdaySearch(Map.Entry<String, List<String>> facet, int offset, int limit) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("appliedFacets", facet == null ? Map.of() : Map.of(facet.getKey(), facet.getValue()));
+        body.put("limit", limit);
+        body.put("offset", offset);
+        body.put("searchText", "");
+        return JSON.writeValueAsString(body);
+    }
+
+    /**
+     * Each site names its location facets differently. A value that is exactly "India" (a country facet) wins;
+     * otherwise every location value naming India ("Pune, India"), from the facet with the most of them. Null if none.
+     */
+    static Map.Entry<String, List<String>> indiaFacet(JsonNode search) {
+        Map<String, List<String>> named = new java.util.LinkedHashMap<>();
+        Map.Entry<String, List<String>> country = indiaFacet(search.path("facets"), named);
+        if (country != null) return country;
+        return named.entrySet().stream().max(java.util.Comparator.comparingInt(e -> e.getValue().size())).orElse(null);
+    }
+
+    private static Map.Entry<String, List<String>> indiaFacet(Iterable<JsonNode> facets, Map<String, List<String>> named) {
+        for (JsonNode f : facets) {
+            String param = str(f.path("facetParameter"));
+            for (JsonNode v : f.path("values")) {
+                if (v.has("facetParameter")) { // a group of facets
+                    var found = indiaFacet(List.of(v), named);
+                    if (found != null) return found;
+                    continue;
+                }
+                String d = str(v.path("descriptor")), id = str(v.path("id"));
+                if (d == null || id == null || param == null) continue;
+                if (d.strip().equalsIgnoreCase("india")) return Map.entry(param, List.of(id));
+                if (INDIA.matcher(d).find()) named.computeIfAbsent(param, k -> new ArrayList<>()).add(id);
+            }
+        }
+        return null;
+    }
+
+    static JobDraft parseWorkdayJob(String json, String token, String company, String pageUrl) {
+        JsonNode i = JSON.readTree(json).path("jobPostingInfo");
+        List<String> locs = new ArrayList<>();
+        if (str(i.path("location")) != null) locs.add(str(i.path("location")));
+        for (JsonNode l : i.path("additionalLocations")) if (str(l) != null) locs.add(str(l));
+        String location = locs.isEmpty() ? null : String.join(" / ", locs);
+        String url = firstNonNull(str(i.path("externalUrl")), pageUrl);
+        return new JobDraft("workday", firstNonNull(str(i.path("id")), str(i.path("jobReqId"))), "workday:" + token, url, url,
+                str(i.path("title")), company, location, workplaceFrom(location, str(i.path("remoteType"))), str(i.path("timeType")),
+                null, null, null, htmlToText(str(i.path("jobDescription"))), instant(str(i.path("startDate"))));
     }
 
     // ---------------------------------------------------------------- Adzuna (official API, key required)

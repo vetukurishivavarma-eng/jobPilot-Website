@@ -28,7 +28,7 @@ export type JobStatus = 'NEW' | 'SAVED' | 'DISMISSED'
 export type Job = {
   id: string; title: string; company: string; location: string | null; workplace: 'REMOTE' | 'HYBRID' | 'ONSITE' | null
   employmentType: string | null; salaryMin: number | null; salaryMax: number | null; salaryCurrency: string | null
-  source: 'greenhouse' | 'lever' | 'adzuna' | 'web' | 'manual'; url: string | null; applyUrl: string | null
+  source: 'greenhouse' | 'lever' | 'workday' | 'adzuna' | 'web' | 'manual'; url: string | null; applyUrl: string | null
   postedAt: string | null; discoveredAt: string; closedAt: string | null; status: JobStatus; origin: 'COMPANY' | 'SEARCH' | 'IMPORT'
   skills: string[]; minYears: number | null; seniority: string | null; educationLevel: string | null
   description: string | null

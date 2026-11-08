@@ -38,3 +38,23 @@ greenhouse:thoughtworks Thoughtworks
 greenhouse:purestorage Pure Storage
 greenhouse:celonis Celonis
 greenhouse:metropolis Metropolis
+
+# Workday careers sites (token = tenant.wdN/site from https://tenant.wdN.myworkdayjobs.com/site); India openings verified 2026-11-08
+workday:nvidia.wd5/NVIDIAExternalCareerSite NVIDIA
+workday:salesforce.wd12/External_Career_Site Salesforce
+workday:wf.wd1/WellsFargoJobs Wells Fargo
+workday:mastercard.wd1/CorporateCareers Mastercard
+workday:adobe.wd5/external_experienced Adobe
+workday:intel.wd1/External Intel
+workday:micron.wd1/External Micron
+workday:hp.wd5/ExternalCareerSite HP
+workday:citi.wd5/2 Citi
+workday:ms.wd5/External Morgan Stanley
+workday:statestreet.wd1/Global State Street
+workday:workday.wd5/Workday Workday
+workday:paypal.wd1/jobs PayPal
+workday:cadence.wd1/External_Careers Cadence
+workday:fmr.wd1/FidelityCareers Fidelity Investments
+workday:thomsonreuters.wd5/External_Career_Site Thomson Reuters
+workday:novartis.wd3/Novartis_Careers Novartis
+workday:pfizer.wd1/PfizerCareers Pfizer

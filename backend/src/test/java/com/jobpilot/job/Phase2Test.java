@@ -50,6 +50,30 @@ class Phase2Test {
     }
 
     @Test
+    void workdayFixtures() throws Exception {
+        // a country facet value "India" wins over "Indiana"
+        var wf = JobSources.indiaFacet(JobSources.JSON.readTree(fixture("workday-wf-facets.json")));
+        assertEquals("locationCountry", wf.getKey());
+        assertEquals(List.of("c4f78be1a8f14da0ab49ce1162348a5e"), wf.getValue());
+        // no country facet: every "..., India" location, never "Remote - Indiana"
+        var mc = JobSources.indiaFacet(JobSources.JSON.readTree(fixture("workday-mastercard-facets.json")));
+        assertEquals("locations", mc.getKey());
+        assertTrue(mc.getValue().size() >= 8, "ids: " + mc.getValue());
+        assertFalse(mc.getValue().contains("0cdca7f468934b6a9bdb13d7f3c9b67e"));
+
+        JobDraft j = JobSources.parseWorkdayJob(fixture("workday-nvidia-job.json"), "nvidia.wd5/NVIDIAExternalCareerSite", "NVIDIA", "https://x/y");
+        assertEquals("workday", j.source());
+        assertEquals("workday:nvidia.wd5/NVIDIAExternalCareerSite", j.board());
+        assertEquals("NVIDIA", j.company());
+        assertTrue(j.title().startsWith("Staff Business Systems Analyst"));
+        assertTrue(j.location().contains("Bengaluru"));
+        assertTrue(j.url().startsWith("https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/"));
+        assertFalse(j.description().contains("<"));
+        assertNotNull(j.postedAt());
+        assertTrue(MatchScorer.inMarket(j.location(), j.workplace()));
+    }
+
+    @Test
     void leverFixture() throws Exception {
         List<JobDraft> jobs = JobSources.parseLever(fixture("lever-cred.json"), "cred", "CRED");
         assertEquals(3, jobs.size());

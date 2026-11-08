@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api, ApiError, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult } from '../api'
 
 const TABS = [['ACTIVE', 'Inbox'], ['SAVED', 'Saved'], ['DISMISSED', 'Dismissed'], ['ALL', 'All']] as const
-const SOURCE: Record<Job['source'], string> = { greenhouse: 'Greenhouse', lever: 'Lever', adzuna: 'Adzuna', web: 'Web', manual: 'Added by you' }
+const SOURCE: Record<Job['source'], string> = { greenhouse: 'Greenhouse', lever: 'Lever', workday: 'Workday', adzuna: 'Adzuna', web: 'Web', manual: 'Added by you' }
 const LEVEL: Record<string, string> = { INTERN: 'Internship', ENTRY: 'Entry level', MID: 'Mid level', SENIOR: 'Senior', LEAD: 'Lead / staff', MANAGER: 'Manager' }
 const DEGREE: Record<string, string> = { BACHELOR: "Bachelor's", MASTER: "Master's", PHD: 'PhD' }
 const emptyManual: ManualJob = { title: '', company: '', location: '', url: '', description: '' }

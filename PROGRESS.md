@@ -5,6 +5,11 @@
 - WAITING ON USER: checking the resume-based job list (4 jobs for the Java/Hyderabad account).
 - NEXT (offered, not confirmed): Workday careers-site reader (biggest supply gain), then SmartRecruiters/Ashby/Workable; async "Find jobs now" (>45s now); server-side profile lock; ask user about Hevo SDE II stale submittedAt; HackerRank SDET II needs 5 answers from user; delete unused Playwright /fill + BrowserFiller if extension holds up.
 
+## 2026-11-08 night: Workday careers-site reader
+- `JobSources.workdayBoard("tenant.wdN/site")`: POSTs the site's own `/wday/cxs/{tenant}/{site}/jobs` search, finds the India facet (`indiaFacet`: exact "India" country value, else all "..., India" location values), pages 20 at a time (cap 400), then GETs each job for the description (4 at a time). Listing only: Workday needs an account to apply, so the agent/extension doesn't apply there (Open the posting).
+- catalog.txt: 18 Workday sites with India openings verified (NVIDIA, Salesforce, Wells Fargo, Mastercard, Adobe, Intel, Micron, HP, Citi, Morgan Stanley, State Street, Workday, PayPal, Cadence, Fidelity, Thomson Reuters, Novartis, Pfizer). 422 = wrong site name (Dell, Qualcomm, AMD, Walmart, Synopsys, BNY need the real site path).
+- Live: Adobe 37 India jobs in 10s. "Find jobs now" now takes ~2 min (Citi alone ~400 job reads) -> async + poll is the next fix.
+
 ## 2026-11-09 later: jobs chosen from the resume (`MatchScorer.fitsResume`), for every profile
 - Field: any programming language in resume/profile skills = developer -> title must say software/developer/SDE/SWE/backend/full stack/programmer/MTS, or name a technology they have ("Java Engineer"); not sales/support/solutions/manager etc. Non-developers: desired roles (RoleMatch) decide.
 - Stack: every technology a title names (STACKS table: Java, Python, Go, .NET, frontend, iOS, Android, data science, data eng, DevOps/SRE, QA/test, Salesforce, SAP...) -> candidate needs one of them.

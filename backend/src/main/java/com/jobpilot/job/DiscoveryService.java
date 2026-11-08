@@ -95,7 +95,11 @@ public class DiscoveryService {
 
     SourceResult sync(Board b, List<UUID> userIds) {
         try {
-            List<JobDraft> drafts = b.ats() == JobSources.Ats.GREENHOUSE ? JobSources.greenhouseBoard(b.token(), b.name()) : JobSources.leverBoard(b.token(), b.name());
+            List<JobDraft> drafts = switch (b.ats()) {
+                case GREENHOUSE -> JobSources.greenhouseBoard(b.token(), b.name());
+                case LEVER -> JobSources.leverBoard(b.token(), b.name());
+                case WORKDAY -> JobSources.workdayBoard(b.token(), b.name());
+            };
             int fetched = 0, linked = 0;
             for (UUID u : userIds) {
                 JobStore.Outcome o = store.save(drafts, b.key(), u, UserJob.Origin.COMPANY, d -> MatchScorer.inMarket(d.location(), d.workplace()));

@@ -245,6 +245,7 @@ public class ApplicationService {
     }
 
     static String applyUrl(String source, String board, String externalId, String url) {
+        if (!source.equals("lever") && !source.equals("greenhouse")) return url; // Workday etc.: the posting itself
         String token = board.split(":", 2)[1];
         if (source.equals("lever")) return "https://jobs.lever.co/" + token + "/" + externalId + "/apply";
         // the embed form: a board page can redirect to the company's own careers form (Okta does), the embed never does

@@ -30,23 +30,30 @@ public class SafeHttp {
 
     /** GET a fixed, trusted API URL (follows up to 3 redirects). */
     public static String get(String url) {
-        return fetch(URI.create(url), false, MAX_API_BYTES);
+        return fetch(URI.create(url), false, MAX_API_BYTES, null);
+    }
+
+    /** POST JSON to a fixed, trusted API URL (Workday's job search). */
+    public static String postJson(String url, String json) {
+        return fetch(URI.create(url), false, MAX_API_BYTES, json);
     }
 
     /** GET a URL a user typed. */
     public static String getUserUrl(String url) {
         URI uri;
         try { uri = new URI(url.trim()); } catch (URISyntaxException e) { throw new FetchException(400, "That is not a valid URL"); }
-        return fetch(uri, true, MAX_BYTES);
+        return fetch(uri, true, MAX_BYTES, null);
     }
 
-    private static String fetch(URI uri, boolean guard, int maxBytes) {
+    private static String fetch(URI uri, boolean guard, int maxBytes, String json) {
         for (int hop = 0; hop < 4; hop++) {
             if (guard) checkPublic(uri);
             HttpResponse<InputStream> res;
             try {
-                res = CLIENT.send(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(guard ? 15 : 60))
-                        .header("User-Agent", UA).header("Accept", "application/json, text/html;q=0.9, */*;q=0.5").GET().build(),
+                HttpRequest.Builder rb = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(guard ? 15 : 60))
+                        .header("User-Agent", UA).header("Accept", "application/json, text/html;q=0.9, */*;q=0.5");
+                if (json != null) rb.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(json));
+                res = CLIENT.send(rb.build(),
                         HttpResponse.BodyHandlers.ofInputStream());
             } catch (IOException e) {
                 throw new FetchException(502, "Could not reach " + uri.getHost());
