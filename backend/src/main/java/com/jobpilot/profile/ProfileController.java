@@ -61,10 +61,34 @@ public class ProfileController {
         }
     }
 
-    private final ProfileRepository profiles;
+    public record ImportResult(ProfileDto profile, List<String> notes) {}
 
-    public ProfileController(ProfileRepository profiles) {
+    private final ProfileRepository profiles;
+    private final com.jobpilot.resume.ResumeRepository resumes;
+    private final com.jobpilot.apply.Ollama ollama;
+    private final org.springframework.transaction.support.TransactionTemplate tx;
+
+    public ProfileController(ProfileRepository profiles, com.jobpilot.resume.ResumeRepository resumes, com.jobpilot.apply.Ollama ollama,
+                             org.springframework.transaction.support.TransactionTemplate tx) {
+        this.tx = tx;
         this.profiles = profiles;
+        this.resumes = resumes;
+        this.ollama = ollama;
+    }
+
+    /**
+     * A profile draft filled from the default resume (not saved: the user reviews it and PUTs it).
+     * Fields already filled are kept. Takes up to a minute with a local model.
+     */
+    @PostMapping("/import")
+    public ImportResult importFromResume(@AuthenticationPrincipal UUID userId) {
+        String text = resumes.findByUserIdOrderByCreatedAtDesc(userId).stream().filter(com.jobpilot.resume.Resume::isPrimary).findFirst()
+                .map(com.jobpilot.resume.Resume::extractedText).filter(t -> !t.isBlank())
+                .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "NO_RESUME_TEXT",
+                        "Upload your resume first (a PDF or DOCX with real text, not a scan)."));
+        ProfileDto current = tx.execute(s -> profiles.findById(userId).map(ProfileDto::of).orElseGet(ProfileDto::empty));
+        ResumeImport.Result r = ResumeImport.run(text, current, ollama::generateJson);
+        return new ImportResult(r.profile(), r.notes());
     }
 
     @GetMapping

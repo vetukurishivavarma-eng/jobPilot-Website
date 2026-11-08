@@ -23,8 +23,18 @@ public class Ollama {
     Ollama(AppProperties props) { this.props = props; }
 
     public String generate(String prompt) {
+        return call(prompt, false);
+    }
+
+    /** Same, but Ollama constrains the reply to valid JSON. */
+    public String generateJson(String prompt) {
+        return call(prompt, true);
+    }
+
+    private String call(String prompt, boolean json) {
         ObjectNode body = FormReader.JSON.createObjectNode()
                 .put("model", props.ollamaModel()).put("prompt", prompt).put("stream", false);
+        if (json) body.put("format", "json");
         body.putObject("options").put("temperature", 0.3);
         try {
             HttpResponse<String> res = CLIENT.send(HttpRequest.newBuilder(URI.create(props.ollamaUrl() + "/api/generate"))

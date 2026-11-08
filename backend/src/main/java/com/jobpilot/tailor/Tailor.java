@@ -325,7 +325,7 @@ public final class Tailor {
     private static String stripEnd(String s) { return s.replaceAll("[.\\s]+$", ""); }
 
     /** Numbers and skills in generated text must come from the candidate's own facts. */
-    static final class FactCheck {
+    public static final class FactCheck {
         private FactCheck() {}
 
         private static final Pattern NUMBER = Pattern.compile("\\d[\\d,]*(?:\\.\\d+)?");
@@ -334,7 +334,7 @@ public final class Tailor {
                 "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty");
         private static final Pattern NUMBER_WORD = Pattern.compile("\\b(" + String.join("|", WORDS) + ")\\b", Pattern.CASE_INSENSITIVE);
 
-        static List<String> problems(String text, String source, Set<String> allowedSkills) {
+        public static List<String> problems(String text, String source, Set<String> allowedSkills) {
             List<String> out = new ArrayList<>();
             Set<String> known = numbers(source);
             Matcher m = NUMBER.matcher(text);
@@ -362,7 +362,7 @@ public final class Tailor {
          * A rewrite keeps the claim when most of the original's key words survive (compared on a 5-letter stem,
          * so "designed"/"designing" match). Catches a model replacing a bullet with something new.
          */
-        static boolean sameClaim(String original, String rewrite) {
+        public static boolean sameClaim(String original, String rewrite) {
             Set<String> key = stems(original);
             if (key.isEmpty()) return true;
             Set<String> kept = stems(rewrite);
@@ -377,7 +377,7 @@ public final class Tailor {
             return out;
         }
 
-        static Set<String> numbers(String s) {
+        public static Set<String> numbers(String s) {
             Set<String> out = new HashSet<>();
             Matcher m = NUMBER.matcher(s == null ? "" : s);
             while (m.find()) out.add(m.group().replace(",", ""));
