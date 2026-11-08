@@ -86,17 +86,18 @@
     return false;
   }
 
-  // Lever's location box only keeps a value picked from its suggestion list.
+  // Lever's location box keeps only a place picked from its suggestions, stored as {name,id} in a hidden field. Its
+  // widget ignores synthetic typing, so ask the same search it uses and set both fields.
   async function leverLocation(el, v) {
-    el.focus();
-    setText(el, v, false);
-    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: v.slice(-1) }));
-    for (let i = 0; i < 20; i++) {
-      await sleep(250);
-      const first = document.querySelector('.dropdown-results > *');
-      if (first) { first.click(); return true }
-    }
-    return false;
+    const hidden = document.querySelector('[name=selectedLocation]');
+    if (!hidden) return false;
+    let hits = [];
+    try { hits = await (await fetch('/searchLocations?text=' + encodeURIComponent(v))).json() } catch { /* offline */ }
+    if (!hits.length) { const city = v.split(',')[0]; if (city !== v) try { hits = await (await fetch('/searchLocations?text=' + encodeURIComponent(city))).json() } catch { /* */ } }
+    if (!hits[0]?.id) return false;
+    setText(el, hits[0].name, false);
+    hidden.value = JSON.stringify({ name: hits[0].name, id: hits[0].id });
+    return true;
   }
 
   async function choose(f, values) {

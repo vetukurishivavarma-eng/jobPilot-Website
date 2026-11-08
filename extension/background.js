@@ -53,7 +53,7 @@ async function next() {
   if (!s.enabled || s.submittedToday >= s.dailyLimit) return;
   const skip = await skipped();
   const app = (await (await call('/applications')).json())
-    .find((a) => a.auto && a.status === 'READY' && a.missing === 0 && a.applyUrl && !skip.includes(a.id));
+    .find((a) => a.auto && a.status === 'READY' && !a.submittedAt && a.missing === 0 && a.applyUrl && !skip.includes(a.id));
   if (!app) return;
   const tab = await chrome.tabs.create({ url: app.applyUrl, active: false });
   await chrome.storage.session.set({ cur: { tabId: tab.id, appId: app.id, autoSubmit: s.autoSubmit, title: `${app.jobTitle} at ${app.company}` } });
