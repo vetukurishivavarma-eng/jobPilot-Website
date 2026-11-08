@@ -80,10 +80,10 @@ public class JobController {
         size = Math.clamp(size, 1, 100);
         String like = "%" + q.strip().toLowerCase(Locale.ROOT) + "%";
         MatchScorer.Candidate c = matcher.candidate(userId);
-        // only jobs in the user's preferred locations (profile); filtered in memory, so paging happens here
+        // only jobs in the user's preferred locations, role and skills (profile); filtered in memory, so paging happens here
         // ponytail: scores every job in the list in memory; store scores if a user's list grows past a few thousand
         Stream<JobDto> jobs = links.search(userId, st, includeClosed, like, Pageable.unpaged()).getContent().stream()
-                .filter(uj -> matcher.inDesiredLocation(c, uj.job))
+                .filter(uj -> matcher.relevant(c, uj.job))
                 .map(uj -> JobDto.of(uj, false, matcher.score(c, uj.job)));
         if (sort.equalsIgnoreCase("match"))
             jobs = jobs.sorted(Comparator.comparing((JobDto d) -> d.match().score(), Comparator.nullsLast(Comparator.reverseOrder())));

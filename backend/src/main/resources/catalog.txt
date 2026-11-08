@@ -1,0 +1,40 @@
+# Companies JobPilot reads for everyone: ats:token Display name. Each was checked to have openings in India (2026-11-08).
+# Add a line to add a company; boards with no India/remote-India jobs just contribute nothing.
+lever:paytm Paytm
+greenhouse:okta Okta
+greenhouse:databricks Databricks
+greenhouse:zscaler Zscaler
+greenhouse:mongodb MongoDB
+lever:meesho Meesho
+greenhouse:inmobi InMobi
+greenhouse:highradius HighRadius
+greenhouse:stripe Stripe
+lever:hevodata Hevo Data
+greenhouse:sigmoid Sigmoid
+greenhouse:gitlab GitLab
+greenhouse:rubrik Rubrik
+lever:zeta Zeta
+greenhouse:toast Toast
+greenhouse:glance Glance
+lever:mindtickle MindTickle
+greenhouse:stage STAGE
+lever:fampay FamPay
+greenhouse:hackerrank HackerRank
+greenhouse:elastic Elastic
+greenhouse:twilio Twilio
+lever:cred CRED
+greenhouse:coinbase Coinbase
+greenhouse:druva Druva
+greenhouse:airbnb Airbnb
+greenhouse:groww Groww
+greenhouse:turing Turing
+greenhouse:datadog Datadog
+greenhouse:observeai Observe.AI
+greenhouse:godaddy GoDaddy
+greenhouse:newrelic New Relic
+greenhouse:figma Figma
+lever:pocketfm Pocket FM
+greenhouse:thoughtworks Thoughtworks
+greenhouse:purestorage Pure Storage
+greenhouse:celonis Celonis
+greenhouse:metropolis Metropolis

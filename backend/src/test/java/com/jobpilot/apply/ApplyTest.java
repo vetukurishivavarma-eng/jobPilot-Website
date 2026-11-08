@@ -214,11 +214,11 @@ class ApplyTest {
         assertEquals(1, auto.pick(user, 70, 1).size(), "limit");
         assertEquals(List.of(), auto.pick(user, 70, 0));
 
-        // jobs list carries the score and can sort by it
+        // jobs list carries the score, sorts by it, and hides other roles (the Data Scientist job)
         mvc().perform(get("/api/jobs?sort=match").header("Authorization", auth))
                 .andExpect(jsonPath("$.items[0].match.score").value(greaterThanOrEqualTo(90)))
-                .andExpect(jsonPath("$.items[3].title").value("Data Scientist"))
-                .andExpect(jsonPath("$.items[3].match.gaps", hasItem("Needs 8+ years; you have 4")));
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.items[*].title", org.hamcrest.Matchers.not(hasItem("Data Scientist"))));
 
         // settings: validated, defaults off
         mvc().perform(get("/api/auto-apply").header("Authorization", auth))

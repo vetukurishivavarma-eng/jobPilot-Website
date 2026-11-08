@@ -8,7 +8,6 @@ import AuthPage from './pages/AuthPage'
 import ProfilePage from './pages/ProfilePage'
 import ResumesPage from './pages/ResumesPage'
 import JobsPage from './pages/JobsPage'
-import CompaniesPage from './pages/CompaniesPage'
 import TailorPage from './pages/TailorPage'
 import ApplicationsPage, { ApplicationPage } from './pages/ApplicationsPage'
 
@@ -32,7 +31,6 @@ function App() {
             <Route element={<Unlocked />}>
               <Route path="/jobs" element={<JobsPage />} />
               <Route path="/jobs/:id/tailor" element={<TailorPage />} />
-              <Route path="/companies" element={<CompaniesPage />} />
               <Route path="/applications" element={<ApplicationsPage />} />
               <Route path="/applications/:id" element={<ApplicationPage />} />
             </Route>
@@ -48,7 +46,7 @@ function App() {
 
 type Gaps = { missing: string[]; percent: number } | null
 
-// Jobs, Applications and Companies open only with a 100% profile
+// Jobs and Applications open only with a 100% profile
 function Unlocked() {
   const gaps = useOutletContext<Gaps>()
   if (!gaps) return <p className="text-muted">Loading…</p>
@@ -81,7 +79,6 @@ function Shell() {
           <nav className="flex gap-1">
             {locked ? lockedLink('Jobs') : <NavLink to="/jobs" className={link}>Jobs</NavLink>}
             {locked ? lockedLink('Applications') : <NavLink to="/applications" className={link}>Applications</NavLink>}
-            {locked ? lockedLink('Companies') : <NavLink to="/companies" className={link}>Companies</NavLink>}
             <NavLink to="/profile" className={link}>Profile</NavLink>
             <NavLink to="/resumes" className={link}>Resumes</NavLink>
           </nav>
@@ -96,7 +93,7 @@ function Shell() {
           <div className="mx-auto max-w-5xl px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-3">
               <b>Your profile is {gaps.percent}% complete.</b>
-              <span>Jobs, Applications and Companies unlock at 100%.</span>
+              <span>Jobs and Applications unlock at 100%.</span>
               <div className="h-2 w-32 overflow-hidden rounded-full bg-amber-200" aria-hidden>
                 <div className="h-full bg-amber-500" style={{ width: gaps.percent + '%' }} />
               </div>

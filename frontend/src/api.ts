@@ -37,8 +37,6 @@ export type Job = {
 export type JobPage = { items: Job[]; total: number; page: number; size: number }
 export type SourceResult = { source: 'company' | 'adzuna'; label: string; fetched: number; linked: number; error: string | null }
 export type Ats = 'GREENHOUSE' | 'LEVER'
-export type Company = { id: string; ats: Ats; token: string; name: string; boardUrl: string; lastSyncedAt: string | null; lastError: string | null }
-export type Suggestion = { ats: Ats; token: string; name: string; following: boolean }
 export type ManualJob = { title: string; company: string; location: string; url: string; description: string }
 
 export type FormField = {
@@ -128,11 +126,6 @@ export const api = {
   addManualJob: (j: ManualJob) => request<Job>('POST', '/jobs/manual', j),
   runDiscovery: () => request<SourceResult[]>('POST', '/discovery/run'),
 
-  listCompanies: () => request<Company[]>('GET', '/companies'),
-  companySuggestions: () => request<Suggestion[]>('GET', '/companies/suggestions'),
-  followCompany: (body: { url: string } | { ats: Ats; token: string }) =>
-    request<{ company: Company; sync: SourceResult }>('POST', '/companies', body),
-  unfollowCompany: (id: string) => request<void>('DELETE', `/companies/${id}`),
 
   listApplications: () => request<Application[]>('GET', '/applications'),
   getApplication: (id: string) => request<Application>('GET', `/applications/${id}`),
@@ -173,7 +166,7 @@ export const api = {
 }
 
 /**
- * What's still missing for a 100% profile. Jobs, Applications and Companies stay locked until this is empty.
+ * What's still missing for a 100% profile. Jobs and Applications stay locked until this is empty.
  * GitHub and portfolio links are optional; work experience is required only with 1+ years.
  */
 export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[]; percent: number } {

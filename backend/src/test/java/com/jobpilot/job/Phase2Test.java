@@ -223,22 +223,18 @@ class Phase2Test {
                         .content("{\"url\":\"http://169.254.169.254/latest/meta-data\"}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("FETCH_FAILED"));
 
-        // nothing followed, no Adzuna key -> empty report
+        // empty test catalog, no Adzuna key -> empty report
         mvc().perform(post("/api/discovery/run").header("Authorization", auth)).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
     }
 
     @Test
-    void companyEndpoints() throws Exception {
-        String auth = register();
-        mvc().perform(post("/api/companies").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"url\":\"https://www.naukri.com/some-company-jobs\"}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        mvc().perform(post("/api/companies").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ats\":\"LEVER\",\"token\":\"../../etc\"}"))
-                .andExpect(status().isBadRequest());
-        mvc().perform(get("/api/companies/suggestions").header("Authorization", auth))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("Razorpay")).andExpect(jsonPath("$[0].following").value(false));
-        mvc().perform(get("/api/companies").header("Authorization", auth)).andExpect(jsonPath("$", hasSize(0)));
-        mvc().perform(delete("/api/companies/" + UUID.randomUUID()).header("Authorization", auth)).andExpect(status().isNotFound());
+    void catalogParsesAndMarketFilter() {
+        // the test classpath's catalog.txt is empty (no network in tests); the real one must parse
+        assertTrue(DiscoveryService.CATALOG.isEmpty());
+        assertTrue(MatchScorer.inMarket("Bengaluru, India", null));
+        assertTrue(MatchScorer.inMarket("Remote", "REMOTE"));
+        assertFalse(MatchScorer.inMarket("Remote - US", "REMOTE"));
+        assertFalse(MatchScorer.inMarket("San Francisco, California", null));
+        assertFalse(MatchScorer.inMarket(null, null));
     }
 }

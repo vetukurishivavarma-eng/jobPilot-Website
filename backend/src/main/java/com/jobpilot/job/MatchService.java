@@ -36,8 +36,9 @@ public class MatchService {
         });
     }
 
-    public boolean inDesiredLocation(MatchScorer.Candidate c, Job j) {
-        return MatchScorer.inDesiredLocation(c, j.location, j.workplace);
+    /** In the user's preferred locations, role and skills: the only jobs the list and auto mode show. Needs skills loaded. */
+    public boolean relevant(MatchScorer.Candidate c, Job j) {
+        return MatchScorer.inDesiredLocation(c, j.location, j.workplace) && MatchScorer.fitsRoleAndSkills(c, j.title, j.skills);
     }
 
     /** Needs the job's skills loaded (inside a transaction, or a job fetched with them). */

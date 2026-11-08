@@ -1,5 +1,12 @@
 # JobPilot AI — Progress
 
+## 2026-11-09: no more following -> shared company catalog; list = location + role + skills
+- `backend/src/main/resources/catalog.txt`: 38 Greenhouse/Lever boards verified (probe 2026-11-08) to have India openings. Discovery ("Find jobs now" + 6h cron) fetches every board once and links its India/remote-India jobs (`MatchScorer.inMarket`) to the user(s). Test classpath has an empty catalog.txt (no network in tests). CompanyController/CompanySource + Companies page REMOVED (company_sources table left in DB, unused).
+- Jobs list + auto mode show only `MatchService.relevant`: preferred location AND title matches a desired role (RoleMatch) AND (posting lists no skills OR shares one with the candidate). Unrelated-role score also capped at 40.
+- User changed preferred location to Hyderabad (by request, via API): 15 jobs (Zscaler, HighRadius, Coinbase, Twilio, Druva, New Relic...).
+- User asked why not company careers sites directly: answered = per-platform readers. NEXT candidates: Workday (big Mumbai/Hyd IT + banks), then SmartRecruiters/Ashby/Workable public APIs, then Darwinbox/Keka. Listing only; auto-apply stays Greenhouse/Lever.
+- "Find jobs now" over the whole catalog takes >45s (synchronous request); consider async + poll like auto mode.
+
 ## 2026-11-08 late night: preferred-location filter + profile lock
 - Jobs list (and auto mode's picks) show only jobs in the profile's desired locations, or remote open to India (not "Remote - US"); unknown location hidden; relocation does NOT widen it. `MatchScorer.inDesiredLocation` (+ test). List now always filters/pages in memory.
 - Jobs/Applications/Companies (incl. tailor + application pages) locked until `profileGaps` (frontend api.ts) is empty: resume, headline, title, phone, location, years, summary, skills, desired roles, preferred locations, experience (if 1+ yrs), education, salary+currency, notice, work auth, LinkedIn. Banner with % + missing list; ProfilePage save / ResumesPage refresh fire `jobpilot:profile` to re-check. UI-only gate (API not enforced).

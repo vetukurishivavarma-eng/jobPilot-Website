@@ -93,4 +93,22 @@ class MatchScorerTest {
         MatchScorer.Candidate none = new MatchScorer.Candidate(Set.of(), null, List.of(), List.of(), false, null, null);
         assertTrue(MatchScorer.inDesiredLocation(none, "Berlin", null), "no preference = everything");
     }
+
+    @org.junit.jupiter.api.Test
+    void unrelatedRoleSinks() {
+        MatchScorer.Candidate dev = new MatchScorer.Candidate(Set.of("Java"), new BigDecimal(3), List.of("Java Developer", "Software Engineer"), List.of("Mumbai"), false, null, null);
+        var collections = MatchScorer.score(dev, new MatchScorer.JobFacts("Area Collections Manager", List.of(), null, "MANAGER", "Mumbai", "ONSITE", null, null));
+        assertTrue(collections.score() <= 40, collections.toString());
+        var sde = MatchScorer.score(dev, new MatchScorer.JobFacts("Software Engineer II", List.of("Java"), 2, null, "Mumbai", "ONSITE", null, null));
+        assertTrue(sde.score() > 80, sde.toString());
+    }
+
+    @org.junit.jupiter.api.Test
+    void onlyMyRoleAndSkills() {
+        MatchScorer.Candidate dev = new MatchScorer.Candidate(Set.of("Java", "Spring Boot"), new BigDecimal(3), List.of("Java Developer", "Software Engineer"), List.of("Hyderabad"), false, null, null);
+        assertTrue(MatchScorer.fitsRoleAndSkills(dev, "Software Engineer II", List.of("Java", "Kafka")));
+        assertTrue(MatchScorer.fitsRoleAndSkills(dev, "Senior Java Developer", List.of()), "no skills listed: title decides");
+        assertFalse(MatchScorer.fitsRoleAndSkills(dev, "Area Collections Manager", List.of()), "other role");
+        assertFalse(MatchScorer.fitsRoleAndSkills(dev, "Software Engineer", List.of("Python", "Go")), "none of my skills");
+    }
 }

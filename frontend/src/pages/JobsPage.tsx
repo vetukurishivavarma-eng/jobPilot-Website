@@ -57,7 +57,7 @@ export default function JobsPage() {
         <div className="mr-auto">
           <h1 className="font-display text-3xl font-bold">Jobs</h1>
           <p className="mt-1 max-w-xl text-sm text-muted">
-            From the <Link to="/companies" className="underline">companies you follow</Link>, filtered to your desired roles, plus anything you add.
+            Every opening in your <Link to="/profile" className="underline">preferred locations</Link>, from every company JobPilot reads, scored against your profile.
           </p>
         </div>
         <button className="btn-ghost" onClick={() => setAdding(a => !a)}>{adding ? 'Close' : 'Add a job'}</button>
@@ -92,7 +92,7 @@ export default function JobsPage() {
       {data === null ? <p className="text-muted">Loading…</p> : data.items.length === 0 ? (
         <div className="card text-center text-sm text-muted">
           {query ? 'No jobs match that search.' : status === 'ACTIVE'
-            ? <>Nothing here yet. <Link to="/companies" className="underline">Follow a few companies</Link>, set desired roles on your <Link to="/profile" className="underline">profile</Link>, then press <b>Find jobs now</b>.</>
+            ? <>No openings in your preferred locations yet. Press <b>Find jobs now</b>, or add more cities to your <Link to="/profile" className="underline">profile</Link>.</>
             : 'No jobs in this list.'}
         </div>
       ) : (
@@ -123,7 +123,7 @@ function Report({ report, onClose }: { report: SourceResult[]; onClose: () => vo
     <div className="card">
       <div className="flex items-start gap-3">
         <p className="mr-auto font-semibold">
-          {report.length === 0 ? 'No sources to search yet. Follow a company first.' : `${added} new job${added === 1 ? '' : 's'} added to your inbox`}
+          {report.length === 0 ? 'No sources to search.' : `${added} new job${added === 1 ? '' : 's'} added to your inbox`}
         </p>
         <button className="text-sm text-muted hover:text-ink" onClick={onClose} aria-label="Close report">✕</button>
       </div>

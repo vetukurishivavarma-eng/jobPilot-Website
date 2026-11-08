@@ -99,6 +99,9 @@ public final class MatchScorer {
         // "Remote - US" is abroad too: only a bare "Remote"/"Anywhere" counts as open to India
         boolean abroad = j.location() != null && namesAPlace(j.location())
                 && c.desiredLocations() != null && c.desiredLocations().stream().anyMatch(MatchScorer::inIndia) && !inIndia(j.location());
+        // every catalog job reaches the list now (no role filter at sync), so an unrelated role must sink: a collections
+        // manager scored 71 for a Java developer on location + experience alone
+        if (score != null && gaps.contains("Not one of your desired roles")) score = Math.min(score, 40);
         if (score != null && abroad) { score = Math.min(score, 40); gaps.addFirst("In another country (needs a work visa)"); }
         if (score != null && need != null && c.years() != null && need - c.years().doubleValue() >= 3) score = Math.min(score, 50);
         if (score != null && c.years() != null && c.years().doubleValue() >= 2 && j.title() != null && ENTRY_TITLE.matcher(j.title()).find()) {
@@ -124,6 +127,25 @@ public final class MatchScorer {
     static boolean inIndia(String place) {
         String p = place.toLowerCase(Locale.ROOT);
         return INDIA.stream().anyMatch(p::contains);
+    }
+
+    /**
+     * The job list shows only jobs in the candidate's line of work: the title matches one of their desired roles, and if
+     * the posting lists skills, at least one of them is the candidate's (a Python-only job is hidden from a Java developer).
+     */
+    public static boolean fitsRoleAndSkills(Candidate c, String title, List<String> jobSkills) {
+        if (c.desiredRoles() != null && !c.desiredRoles().isEmpty() && (title == null || !RoleMatch.matches(title, c.desiredRoles()))) return false;
+        if (jobSkills == null || jobSkills.isEmpty() || c.skills() == null || c.skills().isEmpty()) return true;
+        Set<String> mine = new HashSet<>();
+        c.skills().forEach(x -> mine.add(x.toLowerCase(Locale.ROOT)));
+        return jobSkills.stream().anyMatch(x -> mine.contains(x.toLowerCase(Locale.ROOT)));
+    }
+
+    /** Jobs JobPilot keeps at all: located in India, or remote and not tied to another country. */
+    public static boolean inMarket(String location, String workplace) {
+        String where = location == null ? "" : location.toLowerCase(Locale.ROOT);
+        boolean remote = "REMOTE".equals(workplace) || where.contains("remote") || where.contains("anywhere");
+        return inIndia(where) || (remote && !namesAPlace(where));
     }
 
     /**
