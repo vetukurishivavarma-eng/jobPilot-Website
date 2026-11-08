@@ -247,8 +247,9 @@ public class ApplicationService {
     static String applyUrl(String source, String board, String externalId, String url) {
         String token = board.split(":", 2)[1];
         if (source.equals("lever")) return "https://jobs.lever.co/" + token + "/" + externalId + "/apply";
-        if (url != null && url.matches("https://([a-z0-9-]+\\.)*greenhouse\\.io/.*")) return url;
-        return "https://job-boards.greenhouse.io/" + token + "/jobs/" + externalId;
+        // the embed form: a board page can redirect to the company's own careers form (Okta does), the embed never does
+        String host = url != null && url.matches("https://([a-z0-9-]+\\.)*eu\\.greenhouse\\.io/.*") ? "job-boards.eu.greenhouse.io" : "job-boards.greenhouse.io";
+        return "https://" + host + "/embed/job_app?for=" + token + "&token=" + externalId;
     }
 
     private static ApiException busy() {

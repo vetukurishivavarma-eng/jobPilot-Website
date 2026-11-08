@@ -68,21 +68,28 @@
     return el.value === v;
   }
 
-  // Searchable dropdowns (Greenhouse's React selects): type, wait for suggestions, take the matching one.
+  // Greenhouse's React selects. Live findings (Okta, 2026-11-08): the menu opens on mouse-UP (a mousedown alone does
+  // nothing), and the phone widget keeps ~244 hidden role=option country rows on the page, so options must come from
+  // this input's own listbox (aria-controls). Searchable ones (country, city) get typed into if nothing matches yet.
+  const norm = (x) => (x || '').trim().toLowerCase();
   async function combo(el, v) {
-    el.focus();
-    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    setText(el, v, false);
-    for (let i = 0; i < 10; i++) {
+    const ctl = el.closest('.select__control') || el;
+    for (const t of ['mousedown', 'mouseup', 'click']) ctl.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, button: 0 }));
+    let typed = false;
+    for (let i = 0; i < 24; i++) {
       await sleep(250);
-      const opts = [...document.querySelectorAll('[role=option]')];
-      const opt = opts.find((o) => eq(o.innerText, v)) || opts.find((o) => o.innerText.toLowerCase().includes(v.toLowerCase())) || (i >= 6 && opts[0]);
-      if (opt) {
-        opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        opt.click();
+      const id = el.getAttribute('aria-controls');
+      const opts = id && document.getElementById(id) ? [...document.getElementById(id).querySelectorAll('[role=option]')] : [];
+      const o = opts.find((o) => norm(o.innerText) === norm(v))
+        || (typed && (opts.find((o) => norm(o.innerText).startsWith(norm(v))) || opts.find((o) => norm(o.innerText).includes(norm(v.split(',')[0])))));
+      if (o) {
+        o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        o.click();
         return true;
       }
+      if (!typed && i >= 2) { setText(el, v.split(',')[0], false); typed = true }
     }
+    el.blur();
     return false;
   }
 

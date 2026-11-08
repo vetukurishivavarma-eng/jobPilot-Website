@@ -159,7 +159,6 @@ export function ApplicationPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const [filling, setFilling] = useState(false)
   const [shot, setShot] = useState<string | null>(null)
 
   useEffect(() => { api.getApplication(id!).then(setA).catch(e => setError(msg(e))) }, [id])
@@ -171,12 +170,6 @@ export function ApplicationPage() {
   }, [a?.status, id])
 
   if (!a) return error ? <p className="text-danger">{error}</p> : <p className="text-muted">Loading…</p>
-
-  async function fill() {
-    setFilling(true)
-    setError(null)
-    try { setA(await api.fillApplication(a!.id)); window.scrollTo({ top: 0, behavior: 'smooth' }) } catch (e) { setError(msg(e)) } finally { setFilling(false) }
-  }
 
   async function showShot() {
     try { setShot(await api.screenshotUrl(a!.id)) } catch (e) { setError(msg(e)) }
@@ -263,11 +256,10 @@ export function ApplicationPage() {
           </span>
           <button className="btn-ghost" onClick={save} disabled={!dirty || saving || locked}>{saving ? 'Saving…' : 'Save answers'}</button>
           {a.status !== 'SUBMITTED' && (
-            <button className="btn" onClick={fill}
-              disabled={filling || dirty || a.missing > 0 || a.status === 'FILLING'}
-              title={dirty ? 'Save your answers first' : a.missing > 0 ? 'Answer the required questions first' : 'Opens the form in Chrome and fills it for you'}>
-              {filling ? 'Opening…' : a.status === 'FILLING' ? 'Window open' : 'Fill application form'}
-            </button>
+            // the JobPilot extension fills the form as it loads in the user's own Chrome (sites reject the automated window)
+            dirty || a.missing > 0 || !a.applyUrl
+              ? <button className="btn" disabled title={dirty ? 'Save your answers first' : 'Answer the required questions first'}>Open and fill</button>
+              : <a className="btn" href={a.applyUrl} target="_blank" rel="noreferrer" title="Opens the form in a new tab; the JobPilot extension fills it">Open and fill</a>
           )}
         </div>
       </div>

@@ -47,7 +47,7 @@ export type FormField = {
 }
 export type ApplicationStatus = 'NEEDS_INPUT' | 'READY' | 'FILLING' | 'SUBMITTED' | 'FAILED'
 export type Application = {
-  id: string; jobId: string; jobTitle: string | null; company: string | null; jobUrl: string | null
+  id: string; jobId: string; jobTitle: string | null; company: string | null; jobUrl: string | null; applyUrl: string | null
   status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null; hasScreenshot: boolean; auto: boolean
   createdAt: string; updatedAt: string; submittedAt: string | null
 }
@@ -155,7 +155,6 @@ export const api = {
   getAuto: () => request<AutoSettings>('GET', '/auto-apply'),
   saveAuto: (s: Pick<AutoSettings, 'enabled' | 'autoSubmit' | 'minScore' | 'dailyLimit'>) => request<AutoSettings>('PUT', '/auto-apply', s),
   runAuto: () => request<AutoSettings>('POST', '/auto-apply/run'),
-  fillApplication: (id: string) => request<Application>('POST', `/applications/${id}/fill`),
   /** Authenticated image: fetched as a blob, shown via an object URL. */
   screenshotUrl: async (id: string) => {
     const res = await fetch(`/api/applications/${id}/screenshot`, { headers: { Authorization: `Bearer ${token.get()}` } })

@@ -165,9 +165,9 @@ class ApplyTest {
     void browserHelpers() {
         // the ATS-hosted form, never the company page that embeds it
         assertEquals("https://jobs.lever.co/meesho/abc/apply", ApplicationService.applyUrl("lever", "lever:meesho", "abc", "https://jobs.lever.co/meesho/abc"));
-        assertEquals("https://job-boards.eu.greenhouse.io/groww/jobs/1", ApplicationService.applyUrl("greenhouse", "greenhouse:groww", "1", "https://job-boards.eu.greenhouse.io/groww/jobs/1"));
-        assertEquals("https://job-boards.greenhouse.io/databricks/jobs/7", ApplicationService.applyUrl("greenhouse", "greenhouse:databricks", "7", "https://databricks.com/careers?gh_jid=7"));
-        assertEquals("https://job-boards.greenhouse.io/x/jobs/7", ApplicationService.applyUrl("greenhouse", "greenhouse:x", "7", "https://evil.example/greenhouse.io/"));
+        assertEquals("https://job-boards.eu.greenhouse.io/embed/job_app?for=groww&token=1", ApplicationService.applyUrl("greenhouse", "greenhouse:groww", "1", "https://job-boards.eu.greenhouse.io/groww/jobs/1"));
+        assertEquals("https://job-boards.greenhouse.io/embed/job_app?for=databricks&token=7", ApplicationService.applyUrl("greenhouse", "greenhouse:databricks", "7", "https://databricks.com/careers?gh_jid=7"));
+        assertEquals("https://job-boards.greenhouse.io/embed/job_app?for=x&token=7", ApplicationService.applyUrl("greenhouse", "greenhouse:x", "7", "https://evil.example/greenhouse.io/"));
 
         // confirmation detection: the sites' thank-you pages, not the form itself
         assertTrue(BrowserFiller.CONFIRMED_URL.matcher("https://job-boards.greenhouse.io/groww/jobs/1/confirmation").find());
