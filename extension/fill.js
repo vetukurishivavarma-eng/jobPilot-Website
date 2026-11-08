@@ -1,6 +1,7 @@
-// JobPilot Autofill: on a Lever or Greenhouse application form, a "Fill with JobPilot" button fills the answers the
-// agent prepared (and attaches the resume) in the user's own browser. The user checks the form, solves any CAPTCHA
-// and presses Submit themselves; on the site's thank-you page the application is marked as applied in JobPilot.
+// JobPilot Autofill: on a Lever or Greenhouse application form that JobPilot prepared, fills the answers (and attaches
+// the resume) as soon as the form loads, in the user's own browser; "Fill with JobPilot" fills again. In a tab the
+// auto-mode queue opened (background.js) with "Submit for me" on, it also presses Submit; a CAPTCHA challenge or
+// anything it couldn't fill goes to the user. On the site's thank-you page the application is marked as applied.
 // Same field logic as the server's BrowserFiller, ported to the page.
 (() => {
   if (window.__jobpilot) return;
@@ -150,15 +151,16 @@
   }
 
   // ---------- fill ----------
-  async function fill() {
+  // returns the problems list when it filled, or a message why it didn't
+  async function fill(quiet = false) {
     btn.disabled = true;
     btn.textContent = 'Filling…';
     try {
       const r = await ask({ type: 'forPage', url: location.href });
-      if (r.error) return panel(r.error);
+      if (r.error) return quiet ? r.error : panel(r.error) || r.error;
       const app = r.data;
-      if (app.status === 'SUBMITTED') return panel('You already applied to this job (JobPilot shows it as applied).');
-      if (app.missing > 0) return panel(`JobPilot needs ${app.missing} answer(s) from you first. Open the application in JobPilot, answer them, then press Fill again.`);
+      if (app.status === 'SUBMITTED') return panel('You already applied to this job (JobPilot shows it as applied).') || 'already applied';
+      if (app.missing > 0) return panel(`JobPilot needs ${app.missing} answer(s) from you first. Open the application in JobPilot, answer them, then press Fill again.`) || 'missing answers';
       const problems = [];
       const texts = [];
       for (const f of app.fields) {
@@ -178,6 +180,7 @@
       chrome.storage.local.set({ lastFill: { id: app.id, at: Date.now() } });
       if (problems.length) panel('Filled. Please do these yourself, then check the form and submit:', problems);
       else panel('Filled. Check everything, solve the CAPTCHA if there is one, and press Submit.', [], true);
+      return problems;
     } finally {
       btn.disabled = false;
       btn.textContent = 'Fill with JobPilot';
@@ -199,12 +202,40 @@
     return true;
   }
 
+  // ---------- auto mode: submit ----------
+  function submitButton() {
+    const vis = (b) => b.offsetParent && !b.disabled;
+    const all = [...document.querySelectorAll('#btn-submit, button[type=submit], input[type=submit], button')].filter(vis);
+    return all.find((b) => /submit|send application/i.test(b.innerText || b.value || ''));
+  }
+
+  async function auto(role) {
+    const res = await fill(true);
+    if (!Array.isArray(res)) return ask({ type: 'needsYou', reason: "Couldn't fill this form: " + res });
+    if (res.length) return ask({ type: 'needsYou', reason: 'Fill these yourself, then submit: ' + res.join(', ') });
+    if (!role.autoSubmit) return ask({ type: 'needsYou', reason: 'Filled. Check it and press Submit (or close the tab to skip).' });
+    const b = submitButton();
+    if (!b) return ask({ type: 'needsYou', reason: "Filled, but couldn't find the Submit button. Please press it." });
+    await sleep(1500);
+    b.click();
+    // a passing site navigates to its thank-you page (the script restarts there); otherwise a CAPTCHA challenge or a
+    // form error is showing: that's for the user
+    for (let i = 0; i < 30; i++) { await sleep(1000); if (await markIfThanks()) return }
+    ask({ type: 'needsYou', reason: 'Pressed Submit but no confirmation yet. Solve the CAPTCHA or fix the form, then submit.' });
+  }
+
   // ---------- start ----------
   (async () => {
     if (await markIfThanks()) return;
     // the form can render late (Greenhouse is a React app): wait for the resume upload field
     for (let i = 0; i < 40; i++) {
-      if (document.querySelector('input[type=file]')) { btn.onclick = fill; document.documentElement.appendChild(host); return }
+      if (document.querySelector('input[type=file]')) {
+        btn.onclick = () => fill();
+        document.documentElement.appendChild(host);
+        await sleep(1000); // let React finish hydrating before typing
+        const role = await ask({ type: 'role' });
+        return role.auto ? auto(role) : fill(true);
+      }
       await sleep(500);
     }
   })();

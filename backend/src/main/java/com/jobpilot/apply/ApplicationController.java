@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/applications")
 public class ApplicationController {
 
-    public record ApplicationDto(UUID id, UUID jobId, String jobTitle, String company, String jobUrl, Application.Status status,
+    public record ApplicationDto(UUID id, UUID jobId, String jobTitle, String company, String jobUrl, String applyUrl, Application.Status status,
                                  UUID resumeId, List<FormField> fields, int missing, String error, boolean hasScreenshot, boolean auto,
                                  Instant createdAt, Instant updatedAt, Instant submittedAt) {}
     public record CreateRequest(@NotNull UUID jobId) {}
@@ -136,7 +136,7 @@ public class ApplicationController {
 
     private ApplicationDto dto(Application a, Job j) {
         List<FormField> f = ApplicationService.fields(a);
-        return new ApplicationDto(a.id, a.jobId, j == null ? null : j.title(), j == null ? null : j.company(), j == null ? null : j.url(),
+        return new ApplicationDto(a.id, a.jobId, j == null ? null : j.title(), j == null ? null : j.company(), j == null ? null : j.url(), j == null || j.board() == null ? null : ApplicationService.applyUrl(j),
                 a.status, a.resumeId, f, (int) f.stream().filter(FormField::missing).count(), a.error, a.screenshotKey != null, a.auto,
                 a.createdAt, a.updatedAt, a.submittedAt);
     }

@@ -15,12 +15,11 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 
 /**
  * Auto mode. Each run: takes the user's open Greenhouse/Lever jobs scoring at or above their minimum, best first,
- * prepares applications for them, and (if auto-submit is on) fills and submits the ones with every answer in,
- * up to the daily limit. Questions it can't answer wait for the user; a CAPTCHA pauses the run with the window open.
+ * prepares applications for them, up to the daily limit. The browser extension then fills (and with auto-submit,
+ * submits) the ready ones in the user's own Chrome. Questions it can't answer wait for the user.
  */
 @Service
 public class AutoApplyService {
@@ -90,36 +89,11 @@ public class AutoApplyService {
             }
         }
 
-        // 3. submit the ready ones, one window at a time
-        if (s.autoSubmit) {
-            for (Application a : apps.findByUserIdAndStatusAndAutoTrueOrderByCreatedAtAsc(userId, Application.Status.READY)) {
-                if (submittedToday(userId) >= s.dailyLimit) { notes.add("Daily limit reached."); break; }
-                BrowserFiller.Report r;
-                try {
-                    r = service.fill(userId, a.id, true).get(); // waits; includes the time the user takes on a CAPTCHA
-                } catch (ApiException e) {
-                    notes.add(e.getMessage());
-                    break;
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (ExecutionException e) {
-                    failed++;
-                    continue;
-                }
-                if (r.outcome().equals("SUBMITTED")) submitted++;
-                else if (r.outcome().equals("FAILED")) failed++;
-                else {
-                    // handed to the user: auto mode won't reopen it every run; they finish it from the Applications page
-                    service.update(a.id, x -> x.auto = false);
-                    waiting++;
-                    notes.add("Paused: an application needs you (window closed or not confirmed).");
-                    break;
-                }
-            }
-        } else if (prepared > 0) {
-            notes.add("Auto-submit is off: prepared applications are waiting for your review.");
-        }
+        // 3. filling and submitting happens in the user's own Chrome: the JobPilot extension works through the READY
+        //    auto applications one tab at a time (sites like Lever reject submits from the agent's automated window)
+        if (prepared > 0) notes.add(s.autoSubmit
+                ? "Prepared. The JobPilot extension in your Chrome fills and submits the ready ones, one tab at a time."
+                : "Prepared. The JobPilot extension opens the ready ones filled in, one tab at a time, for you to check and submit.");
 
         Summary sum = new Summary(Instant.now(), considered, prepared, needInput, submitted, waiting, failed, notes);
         tx.executeWithoutResult(t -> {

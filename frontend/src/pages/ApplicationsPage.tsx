@@ -122,9 +122,9 @@ function AutoPanel({ onRunFinished }: { onRunFinished: () => void }) {
       <label className="flex cursor-pointer items-start gap-2 text-sm">
         <input type="checkbox" className="mt-0.5 h-4 w-4" checked={form.autoSubmit} onChange={e => { setForm({ ...form, autoSubmit: e.target.checked }); setSaved(false) }} />
         <span>
-          <b>Submit for me</b> when every answer is in. A Chrome window opens and the agent presses Submit.
+          <b>Submit for me</b> when every answer is in. The JobPilot extension opens each one in a tab of your Chrome, fills it and presses Submit.
           <span className="block text-xs text-muted">
-            Off: applications wait here for your review. On a "verify you're human" check, it stops and leaves the window for you.
+            Off: it still opens and fills them one at a time, and you press Submit (close the tab to skip). On a "verify you're human" check it brings the tab to you.
           </span>
         </span>
       </label>

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Autofill",
-  "version": "0.1.0",
-  "description": "Fills the application JobPilot prepared, in your own browser. You check it, solve any CAPTCHA, and submit.",
-  "permissions": ["storage"],
+  "version": "0.2.0",
+  "description": "Fills the application JobPilot prepared, in your own browser. With auto mode on, works through the ready ones one tab at a time. CAPTCHAs are always left to you.",
+  "permissions": ["storage", "alarms", "notifications"],
   "host_permissions": ["http://localhost:8080/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [

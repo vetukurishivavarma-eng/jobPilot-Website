@@ -1,5 +1,10 @@
 # JobPilot AI — Progress
 
+## 2026-11-08 late: extension now runs auto mode hands-free (not live-tested)
+- User asked to drop the manual "press Fill" step. Server auto mode now ONLY prepares; the Playwright submit loop is gone from it (Lever rejects that window). Manual "Fill application form" button still uses Playwright.
+- Extension 0.2.0 (reload it in chrome://extensions): `background.js` queue, chrome.alarms every 2 min (+ on sign-in): if auto mode is on and under the daily limit, opens the next READY `auto` application with 0 missing (DTO now has `applyUrl`) in a background tab. `fill.js` fills on load on ANY prepared form (button = refill). Queue tab + "Submit for me" -> clicks Submit, waits 30s for the thank-you page -> marks applied, closes tab, next. CAPTCHA challenge / unfilled field / no Submit button / review mode (Submit for me off) -> notification + tab brought to front + app added to the extension's skip list (not reopened). Closing the tab = skip.
+- FIRST LIVE TEST: start.ps1, reload extension, open localhost:5173 signed in, Auto mode on (+Submit for me), Run now; watch the Hevo/Paytm tabs.
+
 ## RESUME HERE (2026-11-08 end of day, shut down by user)
 
 **Start:** `powershell -ExecutionPolicy Bypass -File start.ps1` (backend 8080 + frontend 5173; `-BackendOnly` restarts just the backend and now stops the old one first). Model qwen2.5:3b (7B too slow on this 7.8 GB CPU-only PC). 45 tests pass.
