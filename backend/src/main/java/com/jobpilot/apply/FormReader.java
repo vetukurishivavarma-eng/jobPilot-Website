@@ -21,6 +21,8 @@ final class FormReader {
     private FormReader() {}
 
     static final JsonMapper JSON = JsonMapper.builder().build();
+    /** Field keys starting with this are CSS selectors, for inputs without a name. */
+    static final String BY_CSS = "css:";
 
     static List<FormField> greenhouse(String token, String jobId) {
         return parseGreenhouse(SafeHttp.get("https://boards-api.greenhouse.io/v1/boards/" + token + "/jobs/" + jobId + "?questions=true"));
@@ -73,14 +75,19 @@ final class FormReader {
         List<FormField> out = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
 
-        // Custom questions: each card carries its own JSON template with types and options.
+        // Custom questions (cards[..]) and surveys (surveysResponses[..]) each carry a JSON template with types and options.
+        List<String> templatePrefixes = new ArrayList<>();
         for (Element tpl : form.select("input[name$=[baseTemplate]]")) {
             String card = tpl.attr("name").replace("[baseTemplate]", "");
+            templatePrefixes.add(card);
             JsonNode t;
             try { t = JSON.readTree(tpl.attr("value")); } catch (RuntimeException e) { continue; }
             int i = 0;
             for (JsonNode f : t.path("fields")) {
-                String key = card + "[field" + i++ + "]";
+                // cards name inputs <card>[fieldN]; surveys use <survey>[responses][fieldN]
+                String plain = card + "[field" + i + "]", nested = card + "[responses][field" + i + "]";
+                i++;
+                String key = form.selectFirst("[name=\"" + nested + "\"]") != null ? nested : plain;
                 String type = switch (f.path("type").asString("")) {
                     case "textarea" -> "TEXTAREA";
                     case "multiple-choice", "dropdown" -> "SELECT";
@@ -98,14 +105,21 @@ final class FormReader {
         // Standard questions: plain HTML inputs.
         List<FormField> standard = new ArrayList<>();
         for (Element li : form.select("li.application-question")) {
-            if (!li.select("input[name^=cards]").isEmpty()) continue;
             Element label = li.selectFirst(".application-label");
             Element input = li.selectFirst("input:not([type=hidden]), textarea, select");
-            if (label == null || input == null || input.attr("name").isEmpty() || !seen.add(input.attr("name"))) continue;
-            String type = input.tagName().equals("textarea") ? "TEXTAREA" : input.tagName().equals("select") ? "SELECT"
-                    : input.attr("type").equals("file") ? "FILE" : input.attr("type").equals("checkbox") ? "MULTISELECT" : "TEXT";
+            if (label == null || input == null || input.attr("name").isEmpty()) continue;
+            String name = input.attr("name");
+            if (templatePrefixes.stream().anyMatch(name::startsWith) || !seen.add(name)) continue; // read from its template already
+            boolean radio = input.attr("type").equals("radio"), box = input.attr("type").equals("checkbox");
+            String type = input.tagName().equals("textarea") ? "TEXTAREA" : input.tagName().equals("select") || radio ? "SELECT"
+                    : input.attr("type").equals("file") ? "FILE" : box ? "MULTISELECT" : "TEXT";
             List<String> options = new ArrayList<>();
-            if (type.equals("SELECT")) for (Element o : input.select("option")) if (!o.attr("value").isEmpty()) options.add(o.text().strip());
+            if (input.tagName().equals("select")) for (Element o : input.select("option")) if (!o.attr("value").isEmpty()) options.add(o.text().strip());
+            if (radio || box)
+                for (Element choice : li.select("input[name=\"" + name + "\"]")) {
+                    Element l = choice.parent();
+                    options.add(l != null && !l.text().isBlank() ? l.text().strip() : choice.attr("value"));
+                }
             String text = label.selectFirst(".text") != null ? label.selectFirst(".text").ownText() : label.ownText();
             boolean required = input.hasAttr("required") || label.selectFirst(".required") != null;
             standard.add(new FormField(input.attr("name"), text.replace("✱", "").strip(), type, required, options, null, null));
@@ -113,6 +127,14 @@ final class FormReader {
         // resume first, like the page
         Element resume = form.selectFirst("input[type=file][name=resume]");
         if (resume != null && seen.add("resume")) standard.addFirst(new FormField("resume", "Resume/CV", "FILE", true, List.of(), null, null));
+        // The demographic survey's country picker has no name: target it by CSS. It goes before the survey questions,
+        // because the survey shown can depend on the country.
+        Element country = form.selectFirst("select.candidate-location");
+        if (country != null) {
+            List<String> options = new ArrayList<>();
+            for (Element o : country.select("option")) if (!o.attr("value").isEmpty()) options.add(o.text().strip());
+            standard.add(new FormField(BY_CSS + "select.candidate-location", "What is your location? (demographic survey)", "SELECT", false, options, null, null));
+        }
         standard.addAll(out);
         return standard;
     }

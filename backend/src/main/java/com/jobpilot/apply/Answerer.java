@@ -84,7 +84,21 @@ final class Answerer {
             return String.valueOf(p.expectedSalary());
         if (f.type().equals("SELECT") && l.matches(".*(willing|open) to relocat.*"))
             return option(f.options(), p.willingToRelocate() ? "Yes" : "No");
+        if (f.type().equals("SELECT") && l.startsWith("what is your location") && p.location() != null) return country(f.options(), p.location());
         return null;
+    }
+
+    private static final Pattern INDIAN_CITY = Pattern.compile("\\b(india|bengaluru|bangalore|mumbai|bombay|delhi|new delhi|noida|gurgaon|gurugram|"
+            + "hyderabad|secunderabad|chennai|pune|kolkata|ahmedabad|jaipur|kochi|cochin|chandigarh|indore|coimbatore|vizag|visakhapatnam|"
+            + "lucknow|nagpur|bhubaneswar|trivandrum|thiruvananthapuram|mysore|mysuru|vadodara|surat)\\b", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * A country picker from a location like "Mumbai" or "Austin, United States".
+     * ponytail: Indian cities are recognised by name; elsewhere the location must name the country.
+     */
+    static String country(List<String> options, String location) {
+        for (String o : options) if (Pattern.compile("\\b" + Pattern.quote(o) + "\\b", Pattern.CASE_INSENSITIVE).matcher(location).find()) return o;
+        return INDIAN_CITY.matcher(location).find() ? option(options, "India") : null;
     }
 
     static Optional<Experience> currentJob(ProfileDto p) {

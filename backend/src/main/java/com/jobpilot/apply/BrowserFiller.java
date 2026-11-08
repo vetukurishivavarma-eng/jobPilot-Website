@@ -253,6 +253,7 @@ public class BrowserFiller {
         if (el == null) return false;
         if (Objects.toString(el.evaluate("e => e.tagName"), "").equals("SELECT")) {
             el.selectOption(new SelectOption().setLabel(values.getFirst()));
+            page.waitForTimeout(800); // some selects (survey country) re-render the questions after them
             return true;
         }
         for (String v : values) if (!combo(page, el, v)) return false;
@@ -284,6 +285,10 @@ public class BrowserFiller {
 
     /** Finds a field by its form name or id, falling back to its visible label. */
     private static Locator field(Page page, FormField f) {
+        if (f.key().startsWith(FormReader.BY_CSS)) {
+            Locator el = page.locator(f.key().substring(FormReader.BY_CSS.length()));
+            return el.count() > 0 ? el.first() : null;
+        }
         String k = css(f.key());
         Locator el = page.locator("[name=\"" + k + "\"]:not([type=hidden]), [id=\"" + k + "\"]:not([type=hidden])");
         if (el.count() > 0) return el.first();

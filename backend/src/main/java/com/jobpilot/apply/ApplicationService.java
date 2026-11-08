@@ -154,6 +154,16 @@ public class ApplicationService {
         return done;
     }
 
+    /** A browser session can't outlive the backend: anything left "filling" by a restart goes back to ready. */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    void releaseInterruptedSessions() {
+        tx.executeWithoutResult(s -> apps.findAll().stream().filter(a -> a.status == Application.Status.FILLING).forEach(a -> {
+            a.status = Application.Status.READY;
+            a.error = "The browser window closed because JobPilot restarted. Press Fill application form to open it again.";
+            a.updatedAt = Instant.now();
+        }));
+    }
+
     void remember(UUID userId, String question, String company, String answer) {
         String key = AnswerBank.key(question, company);
         if (key.isEmpty()) return;

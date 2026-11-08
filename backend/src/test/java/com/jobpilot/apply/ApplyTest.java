@@ -67,6 +67,28 @@ class ApplyTest {
         assertEquals(f.size(), f.stream().map(FormField::key).distinct().count(), "no duplicate keys");
     }
 
+    /** Real Paytm form (2026-11-08): a demographic survey whose answers live under [responses], plus a nameless country picker. */
+    @Test
+    void leverSurveyForm() throws Exception {
+        List<FormField> f = FormReader.parseLever(fixture("lever-paytm-apply.html"));
+        assertEquals(f.size(), f.stream().map(FormField::label).distinct().count(), "no question read twice: " + f.stream().map(FormField::label).toList());
+        FormField age = field(f, "age range");
+        assertEquals("SELECT", age.type());
+        assertTrue(age.key().endsWith("[responses][field0]"), age.key());
+        assertTrue(age.options().contains("21-29"));
+        assertEquals("MULTISELECT", field(f, "ethnicity").type());
+        FormField country = field(f, "What is your location");
+        assertTrue(country.key().startsWith(FormReader.BY_CSS));
+        assertTrue(country.options().contains("India"));
+        assertTrue(f.indexOf(country) < f.indexOf(age), "country is set before the survey it controls");
+
+        List<FormField> out = Answerer.answer(f, ASHA, new Answerer.JobInfo("SDE", "Paytm", ""), Map.of(), null);
+        assertEquals("India", field(out, "What is your location").value(), "Bengaluru -> India");
+        assertNull(field(out, "age range").value(), "personal survey questions stay the user's choice");
+        assertEquals("United States", Answerer.country(List.of("India", "United States"), "Austin, United States"));
+        assertNull(Answerer.country(List.of("India", "Iceland"), "Somewhere"));
+    }
+
     // ------------------------------------------------------------ answering
 
     static ProfileDto profile() {
