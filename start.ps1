@@ -12,6 +12,8 @@ foreach ($line in Get-Content $envFile) {
     if ($line -match '^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$') { [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2].Trim()) }
 }
 
+# stop a backend that's still running, or the new one can't bind 8080
+Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 Start-Process powershell -ArgumentList '-NoExit', '-Command', "Set-Location '$root\backend'; `$host.UI.RawUI.WindowTitle = 'JobPilot backend'; .\mvnw.cmd -o -q spring-boot:run"
 if ($BackendOnly) { Write-Host 'Backend restarting.'; exit }
 Start-Process powershell -ArgumentList '-NoExit', '-Command', "Set-Location '$root\frontend';`$host.UI.RawUI.WindowTitle = 'JobPilot frontend'; npm run dev"
