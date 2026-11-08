@@ -40,6 +40,17 @@ export type Company = { id: string; ats: Ats; token: string; name: string; board
 export type Suggestion = { ats: Ats; token: string; name: string; following: boolean }
 export type ManualJob = { title: string; company: string; location: string; url: string; description: string }
 
+export type FormField = {
+  key: string; label: string; type: 'TEXT' | 'TEXTAREA' | 'FILE' | 'SELECT' | 'MULTISELECT'; required: boolean
+  options: string[]; value: string | null; source: 'PROFILE' | 'BANK' | 'AI' | 'USER' | null
+}
+export type ApplicationStatus = 'NEEDS_INPUT' | 'READY' | 'FILLING' | 'SUBMITTED' | 'FAILED'
+export type Application = {
+  id: string; jobId: string; jobTitle: string | null; company: string | null; jobUrl: string | null
+  status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null
+  createdAt: string; updatedAt: string; submittedAt: string | null
+}
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fields?: Record<string, string>) {
     super(message)
@@ -102,6 +113,12 @@ export const api = {
   followCompany: (body: { url: string } | { ats: Ats; token: string }) =>
     request<{ company: Company; sync: SourceResult }>('POST', '/companies', body),
   unfollowCompany: (id: string) => request<void>('DELETE', `/companies/${id}`),
+
+  listApplications: () => request<Application[]>('GET', '/applications'),
+  getApplication: (id: string) => request<Application>('GET', `/applications/${id}`),
+  createApplication: (jobId: string) => request<Application>('POST', '/applications', { jobId }),
+  saveAnswers: (id: string, answers: Record<string, string>) => request<Application>('PUT', `/applications/${id}/answers`, { answers }),
+  deleteApplication: (id: string) => request<void>('DELETE', `/applications/${id}`),
   /** Authenticated download: fetch as blob, then hand the browser an object URL. */
   downloadResume: async (r: Resume) => {
     const res = await fetch(`/api/resumes/${r.id}/file`, { headers: { Authorization: `Bearer ${token.get()}` } })

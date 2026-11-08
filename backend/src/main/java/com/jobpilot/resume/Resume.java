@@ -26,4 +26,12 @@ public class Resume {
     protected Resume() {}
 
     Resume(UUID userId) { this.userId = userId; }
+
+    // read-only view for the apply agent
+    public UUID id() { return id; }
+    public String label() { return label; }
+    public String originalFilename() { return originalFilename; }
+    public String storageKey() { return storageKey; }
+    public String extractedText() { return extractedText; }
+    public boolean isPrimary() { return primary; }
 }

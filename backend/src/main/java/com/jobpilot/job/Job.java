@@ -82,6 +82,17 @@ public class Job {
         }
     }
 
+    // read-only view for the apply agent
+    public UUID id() { return id; }
+    public String source() { return source; }
+    public String externalId() { return externalId; }
+    public String board() { return board; }
+    public String url() { return url; }
+    public String title() { return title; }
+    public String company() { return company; }
+    public String description() { return description; }
+    public Instant closedAt() { return closedAt; }
+
     static String cut(String s, int max) {
         return s == null || s.length() <= max ? s : s.substring(0, max);
     }

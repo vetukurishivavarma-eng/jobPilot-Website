@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, ApiError, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult } from '../api'
 
 const TABS = [['ACTIVE', 'Inbox'], ['SAVED', 'Saved'], ['DISMISSED', 'Dismissed'], ['ALL', 'All']] as const
@@ -143,6 +143,15 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
   const [detail, setDetail] = useState<Job | null>(null)
   const [open, setOpen] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const nav = useNavigate()
+  const agentCan = (j.source === 'greenhouse' || j.source === 'lever') && !j.closedAt
+
+  async function applyWithAgent() {
+    setPreparing(true)
+    setErr(null)
+    try { nav(`/applications/${(await api.createApplication(j.id)).id}`) } catch (e) { setErr(msg(e)); setPreparing(false) }
+  }
 
   async function toggle() {
     setOpen(!open)
@@ -173,7 +182,13 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
             {j.url && <> · <a className="underline hover:text-ink" href={j.url} target="_blank" rel="noreferrer">View original ↗</a></>}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {agentCan && j.status !== 'DISMISSED' && (
+            <button className="btn px-3 py-1.5" onClick={applyWithAgent} disabled={preparing}
+              title="The agent reads the application form and fills it from your profile">
+              {preparing ? 'Reading form…' : 'Apply with agent'}
+            </button>
+          )}
           {j.status === 'SAVED'
             ? <button className="btn-ghost border-signal text-signal" onClick={() => onStatus('NEW')}>Saved ✓</button>
             : j.status !== 'DISMISSED' && <button className="btn-ghost" onClick={() => onStatus('SAVED')}>Save</button>}
@@ -183,6 +198,7 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
         </div>
       </div>
 
+      {err && !open && <p className="mt-2 text-sm text-danger">{err}</p>}
       {(reqs.length > 0 || j.skills.length > 0) && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {reqs.map(r => <span key={r as string} className="rounded bg-ink px-2 py-0.5 text-xs font-medium text-paper">{r}</span>)}

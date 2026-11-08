@@ -35,3 +35,6 @@ jobpilot:
   adzuna-country: ${ADZUNA_COUNTRY:in}
   # Background discovery for every user (Spring cron; "-" disables it).
   discovery-cron: ${DISCOVERY_CRON:0 0 */6 * * *}
+  # Local LLM used by the apply agent for open-ended questions ("Why do you want to join?"). Optional.
+  ollama-url: ${OLLAMA_URL:http://localhost:11434}
+  ollama-model: ${OLLAMA_MODEL:qwen2.5:3b-instruct}

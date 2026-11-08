@@ -9,6 +9,7 @@ import ProfilePage from './pages/ProfilePage'
 import ResumesPage from './pages/ResumesPage'
 import JobsPage from './pages/JobsPage'
 import CompaniesPage from './pages/CompaniesPage'
+import ApplicationsPage, { ApplicationPage } from './pages/ApplicationsPage'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -29,6 +30,8 @@ function App() {
           <Route element={user ? <Shell /> : <Navigate to="/login" />}>
             <Route path="/jobs" element={<JobsPage />} />
             <Route path="/companies" element={<CompaniesPage />} />
+            <Route path="/applications" element={<ApplicationsPage />} />
+            <Route path="/applications/:id" element={<ApplicationPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/resumes" element={<ResumesPage />} />
           </Route>
@@ -53,6 +56,7 @@ function Shell() {
           </span>
           <nav className="flex gap-1">
             <NavLink to="/jobs" className={link}>Jobs</NavLink>
+            <NavLink to="/applications" className={link}>Applications</NavLink>
             <NavLink to="/companies" className={link}>Companies</NavLink>
             <NavLink to="/profile" className={link}>Profile</NavLink>
             <NavLink to="/resumes" className={link}>Resumes</NavLink>

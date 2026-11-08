@@ -47,7 +47,7 @@ public class ProfileController {
             @NotNull @Size(max = 15) List<@Valid @NotNull Education> educations,
             Instant updatedAt) {
 
-        static ProfileDto of(Profile p) {
+        public static ProfileDto of(Profile p) {
             return new ProfileDto(p.headline, p.phone, p.location, p.currentTitle, p.yearsExperience,
                     p.expectedSalary, p.salaryCurrency, p.noticePeriodDays, p.workAuthorization, p.willingToRelocate,
                     p.linkedinUrl, p.githubUrl, p.portfolioUrl, p.summary,
@@ -55,7 +55,7 @@ public class ProfileController {
                     List.copyOf(p.experiences), List.copyOf(p.educations), p.updatedAt);
         }
 
-        static ProfileDto empty() {
+        public static ProfileDto empty() {
             return new ProfileDto(null, null, null, null, null, null, null, null, null, false,
                     null, null, null, null, List.of(), List.of(), List.of(), List.of(), List.of(), null);
         }
