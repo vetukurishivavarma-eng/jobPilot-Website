@@ -1,11 +1,15 @@
 # JobPilot AI — Progress
 
-## RESUME HERE (2026-11-08 evening, paused by user mid-task)
+## RESUME HERE (2026-11-08 end of day, shut down by user)
 
-**State:** live on local Postgres. Start with `powershell -ExecutionPolicy Bypass -File start.ps1` (`-BackendOnly` restarts just the backend). Secrets are in git-ignored `.env.local`, logs in `C:/Users/Shiva/jobpilot-data/logs/backend.log`, Ollama model qwen2.5:7b-instruct (installed; first call ~50s, then ~10s). 38 tests pass.
+**Start:** `powershell -ExecutionPolicy Bypass -File start.ps1` (backend 8080 + frontend 5173; `-BackendOnly` restarts just the backend and now stops the old one first). Model qwen2.5:3b (7B too slow on this 7.8 GB CPU-only PC). 45 tests pass.
 
-**The user started real use** (their own account). First real application: Paytm (Lever) "Senior Software Engineer – Backend (Travel)" — prepared and filled, NOT submitted. That session exposed Lever demographic-survey bugs, fixed in `160cfe0` (survey keys under `[responses]`, no duplicate questions, radio options, CSS-targeted country picker pre-answered "India", FILLING reset on restart).
-**Backend restarted 2026-11-08 with `160cfe0` + profile import.** The user deletes the Paytm application (Applications → Delete draft) and presses "Apply with agent" again so it's re-read with the fixed parser.
+**Next, in order:**
+1. User installs `extension/` (chrome://extensions -> Developer mode -> Load unpacked), opens localhost:5173 signed in, then on https://jobs.lever.co/hevodata/6cbbe304-e065-4711-bf3e-756795d2bc2a/apply presses "Fill with JobPilot". FIRST LIVE TEST of fill.js: check every field (Lever location, cards[] textareas, resume upload), then submit and confirm "Applied" on /thanks.
+2. Then Greenhouse via the extension (HackerRank SDET II, Okta embed) once their missing answers are given.
+3. 6 applications prepared by auto mode (14:23): Paytm + Hevo Business System Engineer READY (latter probably unwanted: matched "System Engineer" role); Hevo SDE I READY after user answers; Hevo SDE II, HackerRank SDET II, Okta Java NEEDS_INPUT.
+4. Consider: "Fill application form" (Playwright window) is rejected by Lever's verification; maybe make the UI point to the extension for Lever. Auto "Submit for me" can't work on CAPTCHA sites.
+5. Other laptop: user wants Claude to control it; waiting on them to run the OpenSSH setup block (key ~/.ssh/lan_laptop) and send username + IP.
 
 ### 2026-11-08: browser extension (extension/), because Lever rejects submits from the agent's Chrome
 - Live finding: Lever answered "There was an error verifying your application" after the user solved hCaptcha in the Playwright window (automated Chrome). Decision: don't disguise the automation; fill in the user's own Chrome instead.
