@@ -79,4 +79,18 @@ class MatchScorerTest {
         assertTrue(MatchScorer.sameCity("bengaluru-vtp, india", "Bangalore"));
         assertFalse(MatchScorer.sameCity("chennai", "Bengaluru"));
     }
+
+    @org.junit.jupiter.api.Test
+    void onlyPreferredLocations() {
+        MatchScorer.Candidate thane = new MatchScorer.Candidate(Set.of(), null, List.of(), List.of("Thane, India", "Hyderabad"), true, null, null);
+        assertTrue(MatchScorer.inDesiredLocation(thane, "Mumbai, Maharashtra", null), "Thane = Mumbai area");
+        assertTrue(MatchScorer.inDesiredLocation(thane, "Secunderabad", "ONSITE"));
+        assertTrue(MatchScorer.inDesiredLocation(thane, "Remote", "REMOTE"));
+        assertTrue(MatchScorer.inDesiredLocation(thane, "Remote - India", null));
+        assertFalse(MatchScorer.inDesiredLocation(thane, "Remote - US", "REMOTE"), "remote abroad");
+        assertFalse(MatchScorer.inDesiredLocation(thane, "Bengaluru, India", "ONSITE"), "relocation doesn't widen the list");
+        assertFalse(MatchScorer.inDesiredLocation(thane, null, null), "unknown and not remote");
+        MatchScorer.Candidate none = new MatchScorer.Candidate(Set.of(), null, List.of(), List.of(), false, null, null);
+        assertTrue(MatchScorer.inDesiredLocation(none, "Berlin", null), "no preference = everything");
+    }
 }

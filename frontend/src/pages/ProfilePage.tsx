@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api, ApiError, type Education, type Experience, type Profile } from '../api'
+import { api, ApiError, profileChanged, type Education, type Experience, type Profile } from '../api'
 
 const emptyExp: Experience = { company: '', title: '', location: null, startDate: '', endDate: null, description: null }
 const emptyEdu: Education = { institution: '', degree: '', field: null, startYear: null, endYear: null, grade: null }
@@ -70,6 +70,7 @@ export default function ProfilePage() {
       }))
       setSaved(true)
       setNotes(null)
+      profileChanged()
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, 'NETWORK', 'Cannot reach the server'))
     } finally {

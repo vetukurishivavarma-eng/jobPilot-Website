@@ -13,6 +13,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.stream.Stream;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
@@ -79,17 +80,16 @@ public class JobController {
         size = Math.clamp(size, 1, 100);
         String like = "%" + q.strip().toLowerCase(Locale.ROOT) + "%";
         MatchScorer.Candidate c = matcher.candidate(userId);
-        if (sort.equalsIgnoreCase("match")) {
-            // ponytail: scores every job in the list in memory; store scores if a user's list grows past a few thousand
-            List<JobDto> all = links.search(userId, st, includeClosed, like, Pageable.unpaged()).getContent().stream()
-                    .map(uj -> JobDto.of(uj, false, matcher.score(c, uj.job)))
-                    .sorted(Comparator.comparing((JobDto d) -> d.match().score(), Comparator.nullsLast(Comparator.reverseOrder())))
-                    .toList();
-            int from = Math.min(all.size(), page * size);
-            return new PageDto(all.subList(from, Math.min(all.size(), from + size)), all.size(), page, size);
-        }
-        Page<UserJob> p = links.search(userId, st, includeClosed, like, PageRequest.of(page, size));
-        return new PageDto(p.map(uj -> JobDto.of(uj, false, matcher.score(c, uj.job))).getContent(), p.getTotalElements(), page, size);
+        // only jobs in the user's preferred locations (profile); filtered in memory, so paging happens here
+        // ponytail: scores every job in the list in memory; store scores if a user's list grows past a few thousand
+        Stream<JobDto> jobs = links.search(userId, st, includeClosed, like, Pageable.unpaged()).getContent().stream()
+                .filter(uj -> matcher.inDesiredLocation(c, uj.job))
+                .map(uj -> JobDto.of(uj, false, matcher.score(c, uj.job)));
+        if (sort.equalsIgnoreCase("match"))
+            jobs = jobs.sorted(Comparator.comparing((JobDto d) -> d.match().score(), Comparator.nullsLast(Comparator.reverseOrder())));
+        List<JobDto> all = jobs.toList();
+        int from = Math.min(all.size(), page * size);
+        return new PageDto(all.subList(from, Math.min(all.size(), from + size)), all.size(), page, size);
     }
 
     @GetMapping("/jobs/{id}")

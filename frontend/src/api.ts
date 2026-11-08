@@ -171,3 +171,34 @@ export const api = {
     URL.revokeObjectURL(url)
   },
 }
+
+/**
+ * What's still missing for a 100% profile. Jobs, Applications and Companies stay locked until this is empty.
+ * GitHub and portfolio links are optional; work experience is required only with 1+ years.
+ */
+export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[]; percent: number } {
+  const has = (s: string | null | undefined) => !!s && s.trim() !== ''
+  const checks: [string, boolean][] = [
+    ['Resume', resumes.length > 0],
+    ['Headline', has(p.headline)],
+    ['Current title', has(p.currentTitle)],
+    ['Phone', has(p.phone)],
+    ['Current location', has(p.location)],
+    ['Years of experience', p.yearsExperience != null],
+    ['Summary', has(p.summary)],
+    ['Skills', p.skills.length > 0],
+    ['Desired roles', p.desiredRoles.length > 0],
+    ['Preferred locations', p.desiredLocations.length > 0],
+    ['Work experience', p.experiences.length > 0 || (p.yearsExperience ?? 0) < 1],
+    ['Education', p.educations.length > 0],
+    ['Expected salary', p.expectedSalary != null && has(p.salaryCurrency)],
+    ['Notice period', p.noticePeriodDays != null],
+    ['Work authorization', has(p.workAuthorization)],
+    ['LinkedIn URL', has(p.linkedinUrl)],
+  ]
+  const missing = checks.filter(([, ok]) => !ok).map(([name]) => name)
+  return { missing, percent: Math.round(100 * (checks.length - missing.length) / checks.length) }
+}
+
+/** Pages that change the profile or resumes fire this so the lock re-checks. */
+export const profileChanged = () => window.dispatchEvent(new Event('jobpilot:profile'))

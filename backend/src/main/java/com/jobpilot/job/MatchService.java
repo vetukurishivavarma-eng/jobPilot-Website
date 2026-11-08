@@ -36,6 +36,10 @@ public class MatchService {
         });
     }
 
+    public boolean inDesiredLocation(MatchScorer.Candidate c, Job j) {
+        return MatchScorer.inDesiredLocation(c, j.location, j.workplace);
+    }
+
     /** Needs the job's skills loaded (inside a transaction, or a job fetched with them). */
     public MatchScorer.Match score(MatchScorer.Candidate c, Job j) {
         return MatchScorer.score(c, new MatchScorer.JobFacts(j.title, j.skills, j.minYears, j.seniority, j.location, j.workplace,

@@ -126,6 +126,20 @@ public final class MatchScorer {
         return INDIA.stream().anyMatch(p::contains);
     }
 
+    /**
+     * The job list shows only these: a job in one of the candidate's desired locations, or remote and open to their
+     * country ("Remote" or "Remote - India" for an India user, not "Remote - US"). No desired locations = everything.
+     * Unknown location and not remote = hidden.
+     */
+    public static boolean inDesiredLocation(Candidate c, String location, String workplace) {
+        if (c.desiredLocations() == null || c.desiredLocations().isEmpty()) return true;
+        String where = location == null ? "" : location.toLowerCase(Locale.ROOT);
+        if (c.desiredLocations().stream().anyMatch(l -> sameCity(where, l))) return true;
+        boolean remote = "REMOTE".equals(workplace) || where.contains("remote") || where.contains("anywhere");
+        boolean wantsIndia = c.desiredLocations().stream().anyMatch(MatchScorer::inIndia);
+        return remote && (!namesAPlace(where) || inIndia(where) == wantsIndia);
+    }
+
     static boolean sameCity(String jobLocationLower, String wanted) {
         String w = wanted.toLowerCase(Locale.ROOT).strip();
         if (w.isEmpty()) return false;

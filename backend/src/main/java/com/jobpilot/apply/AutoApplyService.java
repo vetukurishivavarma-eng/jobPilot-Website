@@ -114,6 +114,7 @@ public class AutoApplyService {
                 .getContent().stream()
                 .map(UserJob::job)
                 .filter(j -> j.source().equals("greenhouse") || j.source().equals("lever"))
+                .filter(j -> matcher.inDesiredLocation(c, j))
                 .filter(j -> apps.findByUserIdAndJobId(userId, j.id()).isEmpty())
                 .map(j -> new Scored(j.id(), Optional.ofNullable(matcher.score(c, j).score()).orElse(-1)))
                 .filter(x -> x.score() >= minScore)

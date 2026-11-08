@@ -1,5 +1,10 @@
 # JobPilot AI — Progress
 
+## 2026-11-08 late night: preferred-location filter + profile lock
+- Jobs list (and auto mode's picks) show only jobs in the profile's desired locations, or remote open to India (not "Remote - US"); unknown location hidden; relocation does NOT widen it. `MatchScorer.inDesiredLocation` (+ test). List now always filters/pages in memory.
+- Jobs/Applications/Companies (incl. tailor + application pages) locked until `profileGaps` (frontend api.ts) is empty: resume, headline, title, phone, location, years, summary, skills, desired roles, preferred locations, experience (if 1+ yrs), education, salary+currency, notice, work auth, LinkedIn. Banner with % + missing list; ProfilePage save / ResumesPage refresh fire `jobpilot:profile` to re-check. UI-only gate (API not enforced).
+- User's preferred locations = ["Thane"] -> only 3 jobs (remote India) remain; most found jobs are Bengaluru. Asked the user whether to add cities.
+
 ## 2026-11-08 night: LIVE-TESTED extension (4e21a95): Lever AND Greenhouse end to end
 - Okta (Greenhouse embed) submitted by the user, SUBMITTED auto-detected from /embed/job_app/confirmation. Greenhouse new boards re-render the whole document after load (removed our button): button re-attached every 1s. Left: HackerRank needs 5 answers; Hevo SDE II stale submittedAt (ask user).
 

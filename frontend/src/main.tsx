@@ -1,8 +1,8 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate, useOutletContext } from 'react-router-dom'
 import './index.css'
-import { api, token, type User } from './api'
+import { api, profileGaps, token, type User } from './api'
 import { SessionCtx, useSession } from './session'
 import AuthPage from './pages/AuthPage'
 import ProfilePage from './pages/ProfilePage'
@@ -29,11 +29,13 @@ function App() {
           <Route path="/login" element={user ? <Navigate to="/jobs" /> : <AuthPage mode="login" />} />
           <Route path="/register" element={user ? <Navigate to="/jobs" /> : <AuthPage mode="register" />} />
           <Route element={user ? <Shell /> : <Navigate to="/login" />}>
-            <Route path="/jobs" element={<JobsPage />} />
-            <Route path="/jobs/:id/tailor" element={<TailorPage />} />
-            <Route path="/companies" element={<CompaniesPage />} />
-            <Route path="/applications" element={<ApplicationsPage />} />
-            <Route path="/applications/:id" element={<ApplicationPage />} />
+            <Route element={<Unlocked />}>
+              <Route path="/jobs" element={<JobsPage />} />
+              <Route path="/jobs/:id/tailor" element={<TailorPage />} />
+              <Route path="/companies" element={<CompaniesPage />} />
+              <Route path="/applications" element={<ApplicationsPage />} />
+              <Route path="/applications/:id" element={<ApplicationPage />} />
+            </Route>
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/resumes" element={<ResumesPage />} />
           </Route>
@@ -44,11 +46,31 @@ function App() {
   )
 }
 
+type Gaps = { missing: string[]; percent: number } | null
+
+// Jobs, Applications and Companies open only with a 100% profile
+function Unlocked() {
+  const gaps = useOutletContext<Gaps>()
+  if (!gaps) return <p className="text-muted">Loading…</p>
+  return gaps.missing.length ? <Navigate to="/profile" replace /> : <Outlet />
+}
+
 function Shell() {
   const { user, setUser } = useSession()
   const nav = useNavigate()
+  const [gaps, setGaps] = useState<Gaps>(null)
+  useEffect(() => {
+    const check = () => Promise.all([api.getProfile(), api.listResumes()]).then(([p, r]) => setGaps(profileGaps(p, r))).catch(() => {})
+    check()
+    window.addEventListener('jobpilot:profile', check)
+    return () => window.removeEventListener('jobpilot:profile', check)
+  }, [])
+  const locked = !gaps || gaps.missing.length > 0
   const link = ({ isActive }: { isActive: boolean }) =>
     `rounded-md px-3 py-1.5 text-sm font-medium ${isActive ? 'bg-ink text-paper' : 'text-muted hover:text-ink'}`
+  const lockedLink = (label: string) => (
+    <span className="cursor-not-allowed rounded-md px-3 py-1.5 text-sm font-medium text-muted/50" title="Complete your profile to unlock">🔒 {label}</span>
+  )
   return (
     <div className="min-h-screen">
       <header className="border-b border-line bg-paper/90 backdrop-blur">
@@ -57,9 +79,9 @@ function Shell() {
             JobPilot<span className="text-signal">.</span>
           </span>
           <nav className="flex gap-1">
-            <NavLink to="/jobs" className={link}>Jobs</NavLink>
-            <NavLink to="/applications" className={link}>Applications</NavLink>
-            <NavLink to="/companies" className={link}>Companies</NavLink>
+            {locked ? lockedLink('Jobs') : <NavLink to="/jobs" className={link}>Jobs</NavLink>}
+            {locked ? lockedLink('Applications') : <NavLink to="/applications" className={link}>Applications</NavLink>}
+            {locked ? lockedLink('Companies') : <NavLink to="/companies" className={link}>Companies</NavLink>}
             <NavLink to="/profile" className={link}>Profile</NavLink>
             <NavLink to="/resumes" className={link}>Resumes</NavLink>
           </nav>
@@ -69,7 +91,24 @@ function Shell() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-8"><Outlet /></main>
+      {gaps && gaps.missing.length > 0 && (
+        <div className="border-b border-amber-300 bg-amber-50">
+          <div className="mx-auto max-w-5xl px-4 py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <b>Your profile is {gaps.percent}% complete.</b>
+              <span>Jobs, Applications and Companies unlock at 100%.</span>
+              <div className="h-2 w-32 overflow-hidden rounded-full bg-amber-200" aria-hidden>
+                <div className="h-full bg-amber-500" style={{ width: gaps.percent + '%' }} />
+              </div>
+            </div>
+            <p className="mt-1 text-amber-900">
+              Still missing: {gaps.missing.join(', ')}.{' '}
+              {gaps.missing.includes('Resume') ? <Link className="underline" to="/resumes">Upload a resume</Link> : <Link className="underline" to="/profile">Fill them in on your profile</Link>}
+            </p>
+          </div>
+        </div>
+      )}
+      <main className="mx-auto max-w-5xl px-4 py-8"><Outlet context={gaps} /></main>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, ApiError, type Resume } from '../api'
+import { api, ApiError, profileChanged, type Resume } from '../api'
 
 const kb = (n: number) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
 
@@ -13,7 +13,7 @@ export default function ResumesPage() {
   const nav = useNavigate()
   const welcome = useSearchParams()[0].has('welcome')
 
-  const refresh = () => api.listResumes().then(setItems).catch(fail)
+  const refresh = () => api.listResumes().then(r => { setItems(r); profileChanged() }).catch(fail)
   useEffect(() => { refresh() }, [])
 
   function fail(e: unknown) {
