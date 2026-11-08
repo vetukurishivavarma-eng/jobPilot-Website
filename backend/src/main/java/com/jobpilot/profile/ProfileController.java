@@ -78,7 +78,7 @@ public class ProfileController {
 
     /**
      * A profile draft filled from the default resume (not saved: the user reviews it and PUTs it).
-     * Fields already filled are kept. Takes up to a minute with a local model.
+     * The resume wins where it has a value; salary, notice, work authorization and desired roles/locations are kept. About two minutes with a 3B model on CPU.
      */
     @PostMapping("/import")
     public ImportResult importFromResume(@AuthenticationPrincipal UUID userId) {

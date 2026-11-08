@@ -75,23 +75,39 @@ final class ResumeImport {
             headers.add(h);
             if (h >= 0) from = h + 1;
         }
+        // Dates must be a range written in the resume: a 3B model once took the date of birth as a start date.
+        // Two-column PDFs put the ranges away from the jobs, so an unmatched job gets the next unused range in text order.
+        List<LocalDate[]> ranges = ranges(text);
+        LocalDate[][] when = new LocalDate[jobs.size()][];
+        Set<Integer> used = new HashSet<>();
+        for (int k = 0; k < jobs.size(); k++) {
+            LocalDate s = date(str(jobs.get(k), "startDate"), false);
+            for (int r = 0; r < ranges.size(); r++)
+                if (s != null && !used.contains(r) && YearMonth.from(ranges.get(r)[0]).equals(YearMonth.from(s))) { when[k] = ranges.get(r); used.add(r); break; }
+        }
+        for (int k = 0; k < jobs.size(); k++) {
+            if (when[k] != null || ranges.isEmpty()) continue;
+            for (int r = 0; r < ranges.size(); r++) if (!used.contains(r)) { when[k] = ranges.get(r); used.add(r); break; }
+            if (when[k] != null && str(jobs.get(k), "company") != null) notes.add("Check the dates for " + str(jobs.get(k), "title") + " at " + str(jobs.get(k), "company") + ": they were matched by position in your resume.");
+        }
+
         List<Experience> exps = new ArrayList<>();
         int droppedSummaries = 0;
         for (int k = 0; k < jobs.size(); k++) {
             JsonNode e = jobs.get(k);
             String company = inText(str(e, "company"), lower), role = str(e, "title");
-            LocalDate start = date(str(e, "startDate"), false);
+            LocalDate start = when[k] != null ? when[k][0] : ranges.isEmpty() ? date(str(e, "startDate"), false) : null;
             if (company == null || role == null || start == null) {
                 if (str(e, "company") != null) notes.add("Skipped a job at \"" + str(e, "company") + "\": it couldn't be matched to your resume text or had no start date.");
                 continue;
             }
             if (!FactCheck.sameClaim(role, text)) { notes.add("Skipped \"" + role + "\" at " + company + ": that title isn't in your resume."); continue; }
-            LocalDate end = date(str(e, "endDate"), true);
+            LocalDate end = when[k] != null ? when[k][1] : date(str(e, "endDate"), true);
             int h = headers.get(k), next = lines.size();
             for (int m = k + 1; m < headers.size(); m++) if (headers.get(m) > h) { next = headers.get(m); break; }
             List<String> bullets = h < 0 ? List.of() : bullets(lines.subList(h + 1, next), role);
             String sum = str(e, "summary");
-            if (sum == null && !bullets.isEmpty() && raw != null) sum = jobSummary(llmJson, role, company, bullets);
+            if (sum == null && bullets.size() >= 2 && raw != null) sum = jobSummary(llmJson, role, company, bullets);
             if (sum != null && !jobSummaryOk(sum, role + "\n" + String.join("\n", bullets), text)) { sum = null; droppedSummaries++; }
             String desc = ((sum == null ? "" : sum + "\n") + String.join("\n", bullets.stream().map(x -> "• " + x).toList())).strip();
             exps.add(new Experience(cut(company, 160), cut(role, 160), cut(inText(str(e, "location"), lower), 120), start,
@@ -107,28 +123,38 @@ final class ResumeImport {
                     year(str(e, "startYear")), year(str(e, "endYear")), cut(inText(str(e, "grade"), lower), 40)));
         }
 
+        // The user pressed "Fill from my resume" and reviews a draft, so what the resume says wins; what only the user
+        // knows (salary, notice, work authorization, relocation, desired roles/locations) and anything the resume lacks is kept.
         BigDecimal years = years(exps);
         ProfileDto c = current;
-        List<String> mergedSkills = new ArrayList<>(c.skills());
+        for (Experience e : exps) if (title != null && title.length() > e.title().length() && title.startsWith(e.title()) && title.contains(e.company())) title = e.title();
+        String currentTitle = or(title != null ? cut(title, 120)
+                : exps.stream().filter(e -> e.endDate() == null).map(Experience::title).findFirst().orElse(null), c.currentTitle());
+        String loc = or(cut(location, 120), c.location());
+        if (summary == null && raw != null && !exps.isEmpty()) {
+            summary = profileSummary(llmJson, currentTitle, years, skills, exps, text);
+            if (summary == null) notes.add("Couldn't write a summary that sticks to your resume's facts. Add a few lines under Summary yourself.");
+        }
+        // the current job's skills lead (the headline shows the first three)
+        List<String> mergedSkills = new ArrayList<>();
+        if (!exps.isEmpty()) mergedSkills.addAll(JdParser.parse(exps.getFirst().title(), exps.getFirst().description()).skills());
         for (String s : skills) if (mergedSkills.stream().noneMatch(x -> x.equalsIgnoreCase(s))) mergedSkills.add(s);
-        String currentTitle = or(c.currentTitle(), title != null ? cut(title, 120)
-                : exps.stream().filter(e -> e.endDate() == null).map(Experience::title).findFirst().orElse(null));
-        String loc = or(c.location(), cut(location, 120));
+        for (String s : c.skills()) if (mergedSkills.stream().noneMatch(x -> x.equalsIgnoreCase(s))) mergedSkills.add(s);
 
         ProfileDto draft = new ProfileDto(
-                or(c.headline(), currentTitle == null ? null
-                        : cut(currentTitle + (skills.isEmpty() ? "" : " · " + String.join(", ", skills.stream().limit(3).toList())), 200)),
-                or(c.phone(), cut(phone, 30)), loc, currentTitle,
-                c.yearsExperience() != null ? c.yearsExperience() : years,
+                or(currentTitle == null ? null
+                        : cut(currentTitle + (mergedSkills.isEmpty() ? "" : " · " + String.join(", ", mergedSkills.stream().limit(3).toList())), 200), c.headline()),
+                or(cut(phone, 30), c.phone()), loc, currentTitle,
+                years != null ? years : c.yearsExperience(),
                 c.expectedSalary(), c.salaryCurrency(), c.noticePeriodDays(), c.workAuthorization(), c.willingToRelocate(),
-                or(c.linkedinUrl(), cut(linkedin, 300)), or(c.githubUrl(), cut(github, 300)), or(c.portfolioUrl(), cut(portfolio, 300)),
-                or(c.summary(), summary),
+                or(cut(linkedin, 300), c.linkedinUrl()), or(cut(github, 300), c.githubUrl()), or(cut(portfolio, 300), c.portfolioUrl()),
+                or(summary, c.summary()),
                 mergedSkills.stream().limit(100).toList(),
                 // suggestions so matching works straight away; the user edits them
                 !c.desiredRoles().isEmpty() || currentTitle == null ? c.desiredRoles() : List.of(currentTitle),
                 !c.desiredLocations().isEmpty() || loc == null ? c.desiredLocations() : List.of(loc.split(",")[0].strip()),
-                c.experiences().isEmpty() ? exps.stream().limit(30).toList() : c.experiences(),
-                c.educations().isEmpty() ? edus.stream().limit(15).toList() : c.educations(),
+                exps.isEmpty() ? c.experiences() : exps.stream().limit(30).toList(),
+                edus.isEmpty() ? c.educations() : edus.stream().limit(15).toList(),
                 c.updatedAt());
         return new Result(draft, notes);
     }
@@ -147,11 +173,12 @@ final class ResumeImport {
                 """.formatted(text.length() > 8000 ? text.substring(0, 8000) : text);
     }
 
-    private static final Pattern SUMMARY_HEAD = Pattern.compile("(?i)^(?:professional |career )?(?:summary|profile|objective|about me)\\s*:?$");
+    private static final Pattern SUMMARY_HEAD = Pattern.compile("(?i)^(?:professional |career |profile |executive )?(?:summary|profile|objective|overview|about me)\\s*:?$");
     private static final Pattern ANY_HEAD = Pattern.compile("(?i)^(?:work |professional )?(?:experience|employment(?: history)?|education"
             + "|academic.*|projects?|(?:technical |key )?skills|certifications?|achievements|awards|languages|interests|hobbies|publications"
             + "|declaration|personal (?:details|information)|(?:professional |career )?(?:summary|profile|objective)|about me)\\s*:?$");
-    private static final Pattern BULLET = Pattern.compile("^(?:[-•*·▪●◦➢✓]|\\d+[.)])\\s*");
+    // -: Symbol/Wingdings bullets from Word PDFs (e.g. U+F0B7)
+    private static final Pattern BULLET = Pattern.compile("^(?:[-•*·▪●◦➢✓\\uF000-\\uF0FF]|\\d+[.)])\\s*");
     private static final Pattern DATEISH = Pattern.compile("(?i)(?:19|20)\\d\\d|present|current");
 
     /** The paragraph under a heading such as "Summary", up to the next heading. */
@@ -187,7 +214,7 @@ final class ResumeImport {
         StringBuilder cur = null;
         for (String l : body) {
             if (ANY_HEAD.matcher(l).matches()) break;
-            if (l.isEmpty()) { cur = null; continue; }
+            if (l.isEmpty()) { if (cur != null) out.add(cur.toString()); cur = null; continue; }
             boolean isBullet = BULLET.matcher(l).find();
             String t = BULLET.matcher(l).replaceFirst("").strip();
             boolean meta = t.length() < 70 && (DATEISH.matcher(t).find() || t.equalsIgnoreCase(role)); // title/date lines
@@ -201,17 +228,56 @@ final class ResumeImport {
         return out.stream().map(x -> cut(x, 600)).limit(15).toList();
     }
 
+    private static final String D = "(\\d{1,2}/\\d{4}|[A-Za-z]{3,9}\\.? \\d{4}|\\d{4})";
+    private static final Pattern RANGE = Pattern.compile("(?i)\\b" + D + "\\s*(?:[–—-]+|to)\\s*(" + D.substring(1, D.length() - 1) + "|present|current|now|till date)\\b");
+
+    /** Date ranges written in the resume, in text order: {start, end or null for "Present"}. */
+    static List<LocalDate[]> ranges(String text) {
+        List<LocalDate[]> out = new ArrayList<>();
+        Matcher m = RANGE.matcher(text);
+        while (m.find()) {
+            LocalDate s = date(m.group(1), false);
+            if (s != null) out.add(new LocalDate[]{s, date(m.group(2), true)});
+        }
+        return out;
+    }
+
+    private static int words(String s) { return s.strip().split("\\s+").length; }
+
     /** One small model call per job (a 3B model skips keys in one big extraction): "what you did", from that job's lines only. */
     static String jobSummary(Function<String, String> llmJson, String role, String company, List<String> bullets) {
         String raw = llmJson.apply("""
-                Summarise what this person did as %s at %s in one or two short sentences, written without "I".
+                Summarise what this person did as %s at %s in ONE sentence of at most 30 words, written without "I". Pick the 2 or 3 most important things; do not list everything.
                 Use only the facts below. Copy numbers exactly. Do not add tools, skills or results that aren't listed.
                 Return JSON: {"summary": str}
 
                 %s
                 """.formatted(role, company, String.join("\n", bullets.stream().map(b -> "- " + b).toList())));
         if (raw == null) return null;
-        try { return str(JSON.readTree(raw), "summary"); } catch (RuntimeException e) { return null; }
+        String s;
+        try { s = str(JSON.readTree(raw), "summary"); } catch (RuntimeException e) { return null; }
+        return s != null && words(s) <= 40 ? s : null; // a 3B model often just joins every bullet
+    }
+
+    /** For resumes without a summary section: 2-3 sentences from the extracted facts, checked against the resume. */
+    static String profileSummary(Function<String, String> llmJson, String title, BigDecimal years, List<String> skills,
+                                 List<Experience> exps, String resume) {
+        String facts = "Title: " + title + "\nYears of experience: " + (years == null ? "unknown" : years.toPlainString())
+                + "\nSkills: " + String.join(", ", skills.stream().limit(15).toList()) + "\nJobs:\n"
+                + String.join("\n", exps.stream().map(e -> "- " + e.title() + " at " + e.company() + ": "
+                        + (e.description() == null ? "" : cut(e.description().replace("\n", " "), 600))).toList());
+        String raw = llmJson.apply("""
+                Write a professional summary of 2 or 3 sentences (at most 60 words) for the top of this person's profile, written without "I". Mention the 4 or 5 most relevant skills, not all of them.
+                Use only the facts below. Copy numbers exactly. Do not add tools, skills, employers or results that aren't listed.
+                Return JSON: {"summary": str}
+
+                %s
+                """.formatted(facts));
+        if (raw == null) return null;
+        String s;
+        try { s = str(JSON.readTree(raw), "summary"); } catch (RuntimeException e) { return null; }
+        String known = resume + "\n" + (years == null ? "" : years.toPlainString()); // the computed years are a fact too
+        return s != null && words(s) <= 75 && jobSummaryOk(s, known, known) ? cut(s, 5000) : null;
     }
 
     /** A job summary may only use numbers from the resume and skills named in that job's own lines. */

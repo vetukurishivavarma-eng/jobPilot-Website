@@ -237,7 +237,7 @@ public final class Tailor {
 
     // ------------------------------------------------------------------ helpers
 
-    private static final Pattern BULLET_PREFIX = Pattern.compile("^\\s*(?:[-•*·▪●]|\\d+[.)])\\s*");
+    private static final Pattern BULLET_PREFIX = Pattern.compile("^\\s*(?:[-•*·▪●◦➢✓\\uF000-\\uF0FF]|\\d+[.)])\\s*");
 
     /** Bullet lines from a description: one per line, or one per sentence for a single paragraph. */
     static List<String> bullets(String text) {

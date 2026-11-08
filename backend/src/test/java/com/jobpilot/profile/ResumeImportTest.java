@@ -98,11 +98,78 @@ class ResumeImportTest {
     @Test
     void jobSummaryComesFromASecondSmallCall() {
         String noSummaries = HONEST_AI.replaceAll(",\\s*\"summary\":\"[^\"]*\"", "");
+        String good = "{\"summary\":\"Built Spring Boot REST APIs serving 3 million requests a day.\"}";
         ProfileDto p = ResumeImport.run(RESUME, ProfileDto.empty(), prompt -> prompt.startsWith("Summarise")
-                ? (prompt.contains("Infosys") ? "{\"summary\":\"Maintained Java batch jobs for a banking client.\"}" : "{\"summary\":\"Ran 9 Kubernetes clusters.\"}")
-                : noSummaries).profile();
-        assertTrue(p.experiences().get(1).description().startsWith("Maintained Java batch jobs for a banking client.\n• "));
-        assertTrue(p.experiences().getFirst().description().startsWith("• "), "the invented TCS summary is dropped");
+                ? (prompt.contains("Infosys") ? "{\"summary\":\"never asked\"}" : good) : noSummaries).profile();
+        assertTrue(p.experiences().getFirst().description().startsWith("Built Spring Boot REST APIs serving 3 million requests a day.\n• "));
+        assertEquals("• Maintained Java batch jobs for a banking client.", p.experiences().get(1).description(), "one bullet is its own summary");
+        ProfileDto liar = ResumeImport.run(RESUME, ProfileDto.empty(), prompt -> prompt.startsWith("Summarise")
+                ? "{\"summary\":\"Ran 9 Kubernetes clusters.\"}" : noSummaries).profile();
+        assertTrue(liar.experiences().getFirst().description().startsWith("• "), "the invented TCS summary is dropped");
+    }
+
+    @Test
+    void wordSymbolBulletsAndAWrittenSummaryWhenTheResumeHasNone() {
+        String resume = """
+                Sai Vihari
+                System Engineer
+                WORK EXPERIENCE
+                System Engineer, Tata Consultancy Services
+                 Designed Kafka messaging for 5+ microservices, improving real-time data flow
+                and reducing response times by 40%.
+                 Built Spring Cache + Redis layers, reducing database load by 60%.
+                01/2023 – Present
+                """;
+        String ai = """
+                {"currentTitle":"System Engineer","experiences":[{"company":"Tata Consultancy Services","title":"System Engineer","startDate":"2023-01","endDate":null}]}""";
+        ProfileDto p = ResumeImport.run(resume, ProfileDto.empty(), prompt ->
+                prompt.startsWith("Write a professional summary") ? "{\"summary\":\"System Engineer at Tata Consultancy Services building Kafka messaging and Redis caching, cutting response times by 40%.\"}"
+                : prompt.startsWith("Summarise") ? null : ai).profile();
+        assertEquals("""
+                • Designed Kafka messaging for 5+ microservices, improving real-time data flow and reducing response times by 40%.
+                • Built Spring Cache + Redis layers, reducing database load by 60%.""", p.experiences().getFirst().description());
+        assertTrue(p.summary().startsWith("System Engineer at Tata"), String.valueOf(p.summary()));
+        // an invented number in the written summary drops it
+        assertNull(ResumeImport.run(resume, ProfileDto.empty(), prompt ->
+                prompt.startsWith("Write a professional summary") ? "{\"summary\":\"Engineer with 9 years of Kafka.\"}" : prompt.startsWith("Summarise") ? null : ai).profile().summary());
+    }
+
+    @Test
+    void twoColumnPdfDatesAndADateOfBirthTheModelMistookForAStart() {
+        String resume = """
+                Sai Vihari
+                saivihari@example.com 7013760799 Thane, India 2000-11-27
+                WORK EXPERIENCE
+                System Engineer (Digital Cadre), Tata Consultancy Services
+                 Designed Kafka messaging for 5+ microservices, improving real-time data flow
+                and reducing response times by 40%.
+                Web Designer Intern, Tata Consultancy Services
+                 Developed responsive web pages using HTML, CSS, JavaScript, and Bootstrap,
+                ensuring cross-browser compatibility.
+
+                01/2023 – Present
+                Thane, India
+
+                03/2022 – 06/2022
+                Remote
+
+                EDUCATION
+                07/2018 – 06/2022
+                """;
+        String ai = """
+                {"currentTitle":"System Engineer (Digital Cadre), Tata Consultancy Services","experiences":[
+                 {"company":"Tata Consultancy Services","title":"System Engineer (Digital Cadre)","startDate":"2000-11-27","endDate":"Present"},
+                 {"company":"Tata Consultancy Services","title":"Web Designer Intern","startDate":"2022-03-01","endDate":"2022-06-30"}]}""";
+        ResumeImport.Result r = ResumeImport.run(resume, ProfileDto.empty(), prompt -> prompt.startsWith("Read") ? ai : null);
+        ProfileDto p = r.profile();
+        assertEquals(LocalDate.of(2023, 1, 1), p.experiences().getFirst().startDate(), "not the date of birth");
+        assertNull(p.experiences().getFirst().endDate());
+        assertEquals(LocalDate.of(2022, 3, 1), p.experiences().get(1).startDate());
+        assertEquals("• Developed responsive web pages using HTML, CSS, JavaScript, and Bootstrap, ensuring cross-browser compatibility.",
+                p.experiences().get(1).description(), "the bullet before a blank line is kept");
+        assertEquals("System Engineer (Digital Cadre)", p.currentTitle(), "company stripped from the title");
+        assertTrue(p.yearsExperience().compareTo(new BigDecimal("6")) < 0, p.yearsExperience().toString());
+        assertTrue(String.join(" ", r.notes()).contains("Check the dates for System Engineer"));
     }
 
     @Test
@@ -117,17 +184,20 @@ class ResumeImportTest {
     }
 
     @Test
-    void keepsWhatTheUserAlreadyFilled() {
+    void resumeWinsButWhatOnlyTheUserKnowsIsKept() {
         ProfileDto mine = new ProfileDto("My headline", "+91 11111 11111", "Pune", "Lead Engineer", new BigDecimal("6"), 3_000_000L, "INR", 60,
-                null, true, null, null, null, "My summary", List.of("Go"), List.of("Platform Engineer"), List.of("Pune"), List.of(), List.of(), null);
+                "Indian citizen", true, null, null, "https://me.dev", "My summary", List.of("Go"), List.of("Platform Engineer"), List.of("Pune"), List.of(), List.of(), null);
         ProfileDto p = ResumeImport.run(RESUME, mine, x -> HONEST_AI).profile();
-        assertEquals("+91 11111 11111", p.phone());
-        assertEquals("Lead Engineer", p.currentTitle());
-        assertEquals(new BigDecimal("6"), p.yearsExperience());
+        assertEquals("+91 98480 12345", p.phone(), "the resume's value wins: it's a draft the user reviews");
+        assertEquals("Software Engineer", p.currentTitle());
+        assertNotEquals(new BigDecimal("6"), p.yearsExperience(), "computed from the jobs");
+        assertEquals("Backend developer building payment APIs in Java and Spring Boot.", p.summary());
+        assertEquals("https://me.dev", p.portfolioUrl(), "not in the resume, kept");
         assertEquals(List.of("Platform Engineer"), p.desiredRoles());
-        assertEquals("Go", p.skills().getFirst(), "existing skills first, resume skills added");
-        assertTrue(p.skills().contains("Java"));
-        assertEquals(2, p.experiences().size(), "empty lists are filled");
+        assertEquals(3_000_000L, p.expectedSalary());
+        assertEquals("Indian citizen", p.workAuthorization());
+        assertTrue(p.skills().containsAll(List.of("Go", "Java")), p.skills().toString());
+        assertEquals(2, p.experiences().size());
         assertEquals(60, p.noticePeriodDays());
     }
 
