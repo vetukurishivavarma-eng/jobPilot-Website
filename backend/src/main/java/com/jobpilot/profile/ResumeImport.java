@@ -19,10 +19,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Fills a profile from resume text. Contact details, links and skills come from exact patterns; jobs, education,
- * title, location and summary from the local LLM, and every LLM value must be traceable to the resume text
- * (a company not in the text, or a bullet whose words or numbers aren't there, is dropped). Years of experience are
- * computed from the job dates. Nothing is saved here: the result is a draft the user reviews.
+ * Fills a profile from resume text. Contact details, links, skills, the summary paragraph and each job's bullet lines
+ * come straight from the text; the local LLM only gives the structure (jobs, titles, dates, education) plus a short
+ * "what you did" summary per job, kept short so a 3B model on CPU answers in about a minute. Every LLM value is checked
+ * against the text (a company not in it is dropped; a job summary with numbers or skills not under that job is dropped).
+ * Years of experience are computed from the job dates. Nothing is saved here: the result is a draft the user reviews.
  */
 final class ResumeImport {
     private ResumeImport() {}
@@ -61,12 +62,23 @@ final class ResumeImport {
         String lower = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " "); // PDF extraction wraps lines mid-name
         String title = inText(str(j, "currentTitle"), lower);
         String location = inText(str(j, "location"), lower);
-        String headline = grounded(str(j, "headline"), text) ? cut(str(j, "headline"), 200) : null;
-        String summary = grounded(str(j, "summary"), text) ? cut(str(j, "summary"), 5000) : null;
+        String summary = cut(section(text, SUMMARY_HEAD), 5000); // the resume's own summary paragraph, no model
 
+        // The model gives the structure (jobs, dates) and a short summary per job; bullets are cut from the text itself.
+        List<String> lines = Arrays.stream(text.split("\\R")).map(String::strip).toList();
+        List<JsonNode> jobs = new ArrayList<>();
+        j.path("experiences").forEach(jobs::add);
+        List<Integer> headers = new ArrayList<>();
+        int from = 0;
+        for (JsonNode e : jobs) {
+            int h = lineOf(lines, str(e, "company"), from);
+            headers.add(h);
+            if (h >= 0) from = h + 1;
+        }
         List<Experience> exps = new ArrayList<>();
-        int droppedBullets = 0;
-        for (JsonNode e : j.path("experiences")) {
+        int droppedSummaries = 0;
+        for (int k = 0; k < jobs.size(); k++) {
+            JsonNode e = jobs.get(k);
             String company = inText(str(e, "company"), lower), role = str(e, "title");
             LocalDate start = date(str(e, "startDate"), false);
             if (company == null || role == null || start == null) {
@@ -75,16 +87,17 @@ final class ResumeImport {
             }
             if (!FactCheck.sameClaim(role, text)) { notes.add("Skipped \"" + role + "\" at " + company + ": that title isn't in your resume."); continue; }
             LocalDate end = date(str(e, "endDate"), true);
-            List<String> bullets = new ArrayList<>();
-            for (JsonNode b : e.path("bullets")) {
-                String s = b.asString("").strip();
-                if (s.isEmpty()) continue;
-                if (grounded(s, text)) bullets.add(s); else droppedBullets++;
-            }
+            int h = headers.get(k), next = lines.size();
+            for (int m = k + 1; m < headers.size(); m++) if (headers.get(m) > h) { next = headers.get(m); break; }
+            List<String> bullets = h < 0 ? List.of() : bullets(lines.subList(h + 1, next), role);
+            String sum = str(e, "summary");
+            if (sum == null && !bullets.isEmpty() && raw != null) sum = jobSummary(llmJson, role, company, bullets);
+            if (sum != null && !jobSummaryOk(sum, role + "\n" + String.join("\n", bullets), text)) { sum = null; droppedSummaries++; }
+            String desc = ((sum == null ? "" : sum + "\n") + String.join("\n", bullets.stream().map(x -> "• " + x).toList())).strip();
             exps.add(new Experience(cut(company, 160), cut(role, 160), cut(inText(str(e, "location"), lower), 120), start,
-                    end != null && end.isBefore(start) ? null : end, cut(String.join("\n", bullets), 5000)));
+                    end != null && end.isBefore(start) ? null : end, desc.isEmpty() ? null : cut(desc, 5000)));
         }
-        if (droppedBullets > 0) notes.add(droppedBullets + " achievement line(s) were left out because they didn't match your resume's wording. Add them yourself if they're missing.");
+        if (droppedSummaries > 0) notes.add(droppedSummaries + " job summary(ies) were left out because they mentioned things not written under that job. Add a line yourself under \"What you did\".");
 
         List<Education> edus = new ArrayList<>();
         for (JsonNode e : j.path("educations")) {
@@ -103,7 +116,9 @@ final class ResumeImport {
         String loc = or(c.location(), cut(location, 120));
 
         ProfileDto draft = new ProfileDto(
-                or(c.headline(), headline), or(c.phone(), cut(phone, 30)), loc, currentTitle,
+                or(c.headline(), currentTitle == null ? null
+                        : cut(currentTitle + (skills.isEmpty() ? "" : " · " + String.join(", ", skills.stream().limit(3).toList())), 200)),
+                or(c.phone(), cut(phone, 30)), loc, currentTitle,
                 c.yearsExperience() != null ? c.yearsExperience() : years,
                 c.expectedSalary(), c.salaryCurrency(), c.noticePeriodDays(), c.workAuthorization(), c.willingToRelocate(),
                 or(c.linkedinUrl(), cut(linkedin, 300)), or(c.githubUrl(), cut(github, 300)), or(c.portfolioUrl(), cut(portfolio, 300)),
@@ -120,26 +135,91 @@ final class ResumeImport {
 
     static String prompt(String text) {
         return """
-                Extract this resume into JSON with exactly these keys:
-                {"currentTitle": str|null, "headline": str|null, "location": str|null, "summary": str|null,
-                 "experiences": [{"company": str, "title": str, "location": str|null, "startDate": "YYYY-MM", "endDate": "YYYY-MM"|null,
-                                  "bullets": [str]}],
+                Read this resume and return JSON with exactly these keys:
+                {"currentTitle": str|null, "location": str|null,
+                 "experiences": [{"company": str, "title": str, "location": str|null, "startDate": "YYYY-MM", "endDate": "YYYY-MM"|null}],
                  "educations": [{"institution": str, "degree": str, "field": str|null, "startYear": int|null, "endYear": int|null, "grade": str|null}]}
-                Rules: copy text exactly as written in the resume, do not rephrase or invent anything. Use null when something is missing.
-                endDate is null for a current job ("Present"). Each bullet is one achievement line copied word for word.
-                List jobs newest first. "summary" is the resume's own summary/objective paragraph, copied, or null.
+                Rules: copy company, title, institution and degree exactly as written. Use null when something is missing.
+                endDate is null for a current job ("Present"). List jobs newest first.
 
                 RESUME:
                 %s
-                """.formatted(text.length() > 12000 ? text.substring(0, 12000) : text);
+                """.formatted(text.length() > 8000 ? text.substring(0, 8000) : text);
     }
 
-    /** The value's words and numbers must come from the resume (a copy, maybe trimmed, not an invention). */
-    static boolean grounded(String value, String text) {
-        if (value == null || value.isBlank()) return false;
-        Set<String> known = FactCheck.numbers(text);
-        for (String n : FactCheck.numbers(value)) if (!known.contains(n)) return false;
-        return FactCheck.sameClaim(value, text) && share(value, text) >= 0.6;
+    private static final Pattern SUMMARY_HEAD = Pattern.compile("(?i)^(?:professional |career )?(?:summary|profile|objective|about me)\\s*:?$");
+    private static final Pattern ANY_HEAD = Pattern.compile("(?i)^(?:work |professional )?(?:experience|employment(?: history)?|education"
+            + "|academic.*|projects?|(?:technical |key )?skills|certifications?|achievements|awards|languages|interests|hobbies|publications"
+            + "|declaration|personal (?:details|information)|(?:professional |career )?(?:summary|profile|objective)|about me)\\s*:?$");
+    private static final Pattern BULLET = Pattern.compile("^(?:[-•*·▪●◦➢✓]|\\d+[.)])\\s*");
+    private static final Pattern DATEISH = Pattern.compile("(?i)(?:19|20)\\d\\d|present|current");
+
+    /** The paragraph under a heading such as "Summary", up to the next heading. */
+    static String section(String text, Pattern head) {
+        StringBuilder out = null;
+        for (String l : text.split("\\R")) {
+            String s = l.strip();
+            if (out == null) { if (head.matcher(s).matches()) out = new StringBuilder(); continue; }
+            if (ANY_HEAD.matcher(s).matches()) break;
+            if (!s.isEmpty()) out.append(out.isEmpty() ? "" : " ").append(BULLET.matcher(s).replaceFirst(""));
+        }
+        return out == null || out.isEmpty() ? null : out.toString();
+    }
+
+    /** Index of the first line at or after {@code from} naming the company (also when the name wraps onto the next line). */
+    static int lineOf(List<String> lines, String company, int from) {
+        if (company == null) return -1;
+        String c = company.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        for (int i = from; i < lines.size(); i++) {
+            String l = lines.get(i).toLowerCase(Locale.ROOT);
+            if (l.contains(c)) return i;
+            if (l.isBlank() || i + 1 >= lines.size()) continue;
+            String next = lines.get(i + 1).toLowerCase(Locale.ROOT);
+            if (!next.contains(c) && (l + " " + next).contains(c)) return i;
+        }
+        return -1;
+    }
+
+    /** The achievement lines under one job: bullets with wrapped lines rejoined, stopping at the next section. */
+    static List<String> bullets(List<String> body, String role) {
+        boolean marked = body.stream().anyMatch(l -> BULLET.matcher(l).find());
+        List<String> out = new ArrayList<>();
+        StringBuilder cur = null;
+        for (String l : body) {
+            if (ANY_HEAD.matcher(l).matches()) break;
+            if (l.isEmpty()) { cur = null; continue; }
+            boolean isBullet = BULLET.matcher(l).find();
+            String t = BULLET.matcher(l).replaceFirst("").strip();
+            boolean meta = t.length() < 70 && (DATEISH.matcher(t).find() || t.equalsIgnoreCase(role)); // title/date lines
+            boolean starts = marked ? isBullet : !meta && t.length() >= 25 && (cur == null || !Character.isLowerCase(t.charAt(0)));
+            if (starts) {
+                if (cur != null) out.add(cur.toString());
+                cur = new StringBuilder(t);
+            } else if (cur != null && !meta) cur.append(' ').append(t); // a wrapped line
+        }
+        if (cur != null) out.add(cur.toString());
+        return out.stream().map(x -> cut(x, 600)).limit(15).toList();
+    }
+
+    /** One small model call per job (a 3B model skips keys in one big extraction): "what you did", from that job's lines only. */
+    static String jobSummary(Function<String, String> llmJson, String role, String company, List<String> bullets) {
+        String raw = llmJson.apply("""
+                Summarise what this person did as %s at %s in one or two short sentences, written without "I".
+                Use only the facts below. Copy numbers exactly. Do not add tools, skills or results that aren't listed.
+                Return JSON: {"summary": str}
+
+                %s
+                """.formatted(role, company, String.join("\n", bullets.stream().map(b -> "- " + b).toList())));
+        if (raw == null) return null;
+        try { return str(JSON.readTree(raw), "summary"); } catch (RuntimeException e) { return null; }
+    }
+
+    /** A job summary may only use numbers from the resume and skills named in that job's own lines. */
+    static boolean jobSummaryOk(String summary, String jobText, String resume) {
+        Set<String> known = FactCheck.numbers(resume);
+        for (String n : FactCheck.numbers(summary)) if (!known.contains(n)) return false;
+        if (!new HashSet<>(JdParser.parse(null, jobText).skills()).containsAll(JdParser.parse(null, summary).skills())) return false;
+        return share(summary, jobText) >= 0.5;
     }
 
     /** Share of the value's longer words that appear in the text. */

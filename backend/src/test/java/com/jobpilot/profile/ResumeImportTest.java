@@ -28,13 +28,12 @@ class ResumeImportTest {
             """;
 
     static final String HONEST_AI = """
-            {"currentTitle":"Software Engineer","headline":"Backend Developer","location":"Bengaluru, India",
-             "summary":"Backend developer building payment APIs in Java and Spring Boot.",
+            {"currentTitle":"Software Engineer","location":"Bengaluru, India",
              "experiences":[
               {"company":"Tata Consultancy Services","title":"Software Engineer","location":"Bengaluru","startDate":"2022-01","endDate":null,
-               "bullets":["Built REST APIs in Spring Boot serving 3 million requests a day.","Migrated reporting jobs to PostgreSQL, cutting runtime by 40%."]},
+               "summary":"Built Spring Boot REST APIs serving 3 million requests a day and moved reporting jobs to PostgreSQL."},
               {"company":"Infosys","title":"Systems Engineer","location":"Mysuru","startDate":"Jul 2020","endDate":"Dec 2021",
-               "bullets":["Maintained Java batch jobs for a banking client."]}],
+               "summary":"Maintained Java batch jobs for a banking client."}],
              "educations":[{"institution":"JNTU Hyderabad","degree":"B.Tech","field":"Computer Science","startYear":2016,"endYear":2020,"grade":"8.1 CGPA"}]}
             """;
 
@@ -52,7 +51,13 @@ class ResumeImportTest {
         assertEquals(LocalDate.of(2022, 1, 1), p.experiences().getFirst().startDate());
         assertNull(p.experiences().getFirst().endDate(), "Present");
         assertEquals(LocalDate.of(2021, 12, 31), p.experiences().get(1).endDate());
-        assertEquals(2, p.experiences().getFirst().description().lines().count());
+        assertEquals("""
+                Built Spring Boot REST APIs serving 3 million requests a day and moved reporting jobs to PostgreSQL.
+                • Built REST APIs in Spring Boot serving 3 million requests a day.
+                • Migrated reporting jobs to PostgreSQL, cutting runtime by 40%.""", p.experiences().getFirst().description(),
+                "summary, then the job's own bullets cut from the text (not the next job's)");
+        assertEquals("Backend developer building payment APIs in Java and Spring Boot.", p.summary(), "the resume's own summary section");
+        assertTrue(p.headline().startsWith("Software Engineer · "), p.headline());
         assertEquals("JNTU Hyderabad", p.educations().getFirst().institution());
         assertEquals(2020, p.educations().getFirst().endYear());
         // computed from the dates, not guessed: Jul 2020 to now
@@ -75,19 +80,40 @@ class ResumeImportTest {
                 {"currentTitle":"Engineering Manager","location":"London",
                  "experiences":[
                   {"company":"Tata Consultancy Services","title":"Software Engineer","startDate":"2022-01","endDate":null,
-                   "bullets":["Built REST APIs in Spring Boot serving 3 million requests a day.","Led a team of 12 engineers across 4 countries."]},
-                  {"company":"Google","title":"Staff Engineer","startDate":"2019-01","endDate":"2020-01","bullets":["Built search."]}],
+                   "summary":"Led a team of 12 engineers building Kafka pipelines."},
+                  {"company":"Google","title":"Staff Engineer","startDate":"2019-01","endDate":"2020-01","summary":"Built search."}],
                  "educations":[{"institution":"Stanford","degree":"MS","field":"CS"}]}
                 """;
         ResumeImport.Result r = ResumeImport.run(RESUME, ProfileDto.empty(), p -> liar);
         ProfileDto p = r.profile();
         assertEquals(1, p.experiences().size(), "the invented Google job is dropped");
-        assertEquals("Built REST APIs in Spring Boot serving 3 million requests a day.", p.experiences().getFirst().description());
+        assertTrue(p.experiences().getFirst().description().startsWith("• Built REST APIs"), "invented summary (12, Kafka) dropped, real bullets kept");
         assertNull(p.location(), "London isn't in the resume");
         assertNotEquals("Engineering Manager", p.currentTitle());
         assertTrue(p.educations().isEmpty());
         String notes = String.join(" ", r.notes());
-        assertTrue(notes.contains("Google") && notes.contains("1 achievement line"), notes);
+        assertTrue(notes.contains("Google") && notes.contains("1 job summary"), notes);
+    }
+
+    @Test
+    void jobSummaryComesFromASecondSmallCall() {
+        String noSummaries = HONEST_AI.replaceAll(",\\s*\"summary\":\"[^\"]*\"", "");
+        ProfileDto p = ResumeImport.run(RESUME, ProfileDto.empty(), prompt -> prompt.startsWith("Summarise")
+                ? (prompt.contains("Infosys") ? "{\"summary\":\"Maintained Java batch jobs for a banking client.\"}" : "{\"summary\":\"Ran 9 Kubernetes clusters.\"}")
+                : noSummaries).profile();
+        assertTrue(p.experiences().get(1).description().startsWith("Maintained Java batch jobs for a banking client.\n• "));
+        assertTrue(p.experiences().getFirst().description().startsWith("• "), "the invented TCS summary is dropped");
+    }
+
+    @Test
+    void bulletsFromPdfTextWithWrappedLinesAndNoMarkers() {
+        assertEquals(List.of("Built REST APIs in Spring Boot serving 3 million requests a day across five regions."),
+                ResumeImport.bullets(List.of("Software Engineer", "Jan 2022 – Present", "• Built REST APIs in Spring Boot serving 3 million",
+                        "requests a day across five regions.", "EDUCATION", "• B.Tech"), "Software Engineer"));
+        assertEquals(List.of("Owned the billing service end to end for retail customers.", "Cut cloud spend by moving batch jobs to spot instances."),
+                ResumeImport.bullets(List.of("Owned the billing service end to end", "for retail customers.",
+                        "Cut cloud spend by moving batch jobs to spot instances."), "Engineer"));
+        assertEquals(0, ResumeImport.lineOf(List.of("Tata Consultancy", "Services — Engineer"), "Tata Consultancy Services", 0), "name wrapped over two lines");
     }
 
     @Test

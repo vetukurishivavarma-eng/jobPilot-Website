@@ -38,7 +38,7 @@ public class Ollama {
         body.putObject("options").put("temperature", 0.3);
         try {
             HttpResponse<String> res = CLIENT.send(HttpRequest.newBuilder(URI.create(props.ollamaUrl() + "/api/generate"))
-                    .timeout(Duration.ofSeconds(180)).header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(300)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build(), HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() != 200) {
                 log.warn("Ollama answered {}: {}", res.statusCode(), res.body());
