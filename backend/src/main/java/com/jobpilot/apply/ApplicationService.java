@@ -196,7 +196,7 @@ public class ApplicationService {
     void releaseInterruptedSessions() {
         tx.executeWithoutResult(s -> apps.findAll().stream().filter(a -> a.status == Application.Status.FILLING).forEach(a -> {
             a.status = Application.Status.READY;
-            a.error = "The browser window closed because JobPilot restarted. Press Fill application form to open it again.";
+            a.error = "JobPilot restarted while the form was open. Press Open and fill to open it again.";
             a.updatedAt = Instant.now();
         }));
     }
