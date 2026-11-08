@@ -1,6 +1,6 @@
 # JobPilot AI — Progress
 
-## RESUME HERE (2026-11-08, apply agent step 1 done)
+## RESUME HERE (2026-11-08, apply agent step 1 done; product plan in docs/PRODUCT.md)
 
 **Phases 1 and 2 are done. The apply agent (Phase 5) is in progress**, at the user's request, ahead of Phases 3 and 4.
 19 backend tests pass and the frontend builds.
