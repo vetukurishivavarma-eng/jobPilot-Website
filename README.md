@@ -27,6 +27,10 @@ Architecture, DB schema, API contracts and the phase plan: [`docs/ARCHITECTURE.m
 
 Maven is not needed; the backend ships with the Maven wrapper (`mvnw`).
 
+### Quick start on Windows (after the one-time database setup below)
+Create `.env.local` next to `start.ps1` with `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `JWT_SECRET`, `STORAGE_DIR` (and optionally `OLLAMA_MODEL`), then run
+`powershell -ExecutionPolicy Bypass -File start.ps1`. It opens the backend and frontend windows and the browser. `.env.local` is git-ignored.
+
 ### 1. Database (one time)
 
 ```sql
