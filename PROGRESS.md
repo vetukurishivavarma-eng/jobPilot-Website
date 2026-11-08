@@ -5,15 +5,12 @@
 **State:** live on local Postgres. Start with `powershell -ExecutionPolicy Bypass -File start.ps1` (`-BackendOnly` restarts just the backend). Secrets are in git-ignored `.env.local`, logs in `C:/Users/Shiva/jobpilot-data/logs/backend.log`, Ollama model qwen2.5:7b-instruct (installed; first call ~50s, then ~10s). 38 tests pass.
 
 **The user started real use** (their own account). First real application: Paytm (Lever) "Senior Software Engineer – Backend (Travel)" — prepared and filled, NOT submitted. That session exposed Lever demographic-survey bugs, fixed in `160cfe0` (survey keys under `[responses]`, no duplicate questions, radio options, CSS-targeted country picker pre-answered "India", FILLING reset on restart).
-**The running backend predates `160cfe0`** (not restarted yet). On resume: restart the backend, then the user deletes the Paytm application (Applications page → Delete draft) and presses "Apply with agent" again so it's re-read with the fixed parser (their answers are remembered).
+**Backend restarted 2026-11-08 with `160cfe0` + profile import.** The user deletes the Paytm application (Applications → Delete draft) and presses "Apply with agent" again so it's re-read with the fixed parser.
 
-### IN PROGRESS: profile from resume (user asked: "ask their resume and auto fill, don't take manual entry for profile")
+### DONE (not live-tested yet): profile from resume (user asked: "ask their resume and auto fill, don't take manual entry for profile")
 - DONE (backend, `bf3400a`): `profile/ResumeImport` (pure). Regex for email/phone/LinkedIn/GitHub/portfolio; JdParser for skills; Ollama `generateJson` (format=json) for title/location/headline/summary/experiences/educations. Every LLM value must be traceable to the resume text (`inText`, `grounded` = numbers ⊆ resume plus FactCheck.sameClaim plus 60% word share); invented jobs, bullets and education are dropped with notes. Years computed from merged job intervals. Merge keeps fields the user already filled; desired role/location are suggested from current title/city. `POST /api/profile/import` returns `{profile (draft, NOT saved), notes}`. Tests: `ResumeImportTest`.
-- TODO (frontend):
-  1. Profile page: a "Fill from my resume" button calls `/api/profile/import`, loads the draft into the form, and shows the notes in a "Check and press Save" banner.
-  2. Resumes page: after an upload, if the profile has no experiences, go to `/profile?import=1`, which runs the import automatically.
-  3. After register: go to /resumes with a "Start by uploading your resume" prompt (onboarding without manual entry).
-  4. Live-test with the user's real resume through the 7B model. PDF text extraction may break lines mid-bullet, so `grounded()` could drop real bullets; consider joining wrapped lines before checking.
+- DONE (frontend): Profile page "Fill from my resume" button + "check and press Save" banner with notes; Resumes upload → `/profile?import=1` (auto-import, ref-guarded against StrictMode double call) when the profile has no experiences; register → `/resumes?welcome=1` prompt. `inText` now collapses whitespace (PDF line wraps mid-name); `grounded` was already word-based.
+- NEXT: live-test with the user's real resume through the 7B model (Profile → Fill from my resume) and check what the notes drop.
 - Then: the user finishes the Paytm application and confirms "Applied ✓" detection on a real thank-you page.
 
 ## Earlier (2026-11-08): apply agent, match score, auto mode, tailored resume and cover letter done; plan in docs/PRODUCT.md

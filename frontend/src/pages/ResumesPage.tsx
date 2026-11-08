@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type Resume } from '../api'
 
 const kb = (n: number) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
@@ -9,6 +10,8 @@ export default function ResumesPage() {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<{ id: string; text: string } | null>(null)
   const input = useRef<HTMLInputElement>(null)
+  const nav = useNavigate()
+  const welcome = useSearchParams()[0].has('welcome')
 
   const refresh = () => api.listResumes().then(setItems).catch(fail)
   useEffect(() => { refresh() }, [])
@@ -22,7 +25,12 @@ export default function ResumesPage() {
     setError(null)
     if (file.size > 5 * 1024 * 1024) return setError('Resume must be 5 MB or smaller')
     setUploading(true)
-    try { await api.uploadResume(file); await refresh() } catch (e) { fail(e) } finally {
+    try {
+      const r = await api.uploadResume(file)
+      // No jobs in the profile yet: build it from this resume instead of asking for manual entry.
+      if (r.textExtracted && (await api.getProfile()).experiences.length === 0) return nav('/profile?import=1')
+      await refresh()
+    } catch (e) { fail(e) } finally {
       setUploading(false)
       if (input.current) input.current.value = ''
     }
@@ -46,6 +54,12 @@ export default function ResumesPage() {
           Upload up to 10 versions (PDF or DOCX, 5 MB max). The agent picks the best match for each job; the starred one is the default.
         </p>
       </div>
+
+      {welcome && (
+        <p className="rounded-md bg-signal/10 px-3 py-2 text-sm">
+          <b>Start by uploading your resume.</b> The agent reads it and fills in your profile, so you don't have to type it.
+        </p>
+      )}
 
       <label
         className="card flex cursor-pointer flex-col items-center gap-2 border-dashed py-10 text-center transition hover:border-signal"

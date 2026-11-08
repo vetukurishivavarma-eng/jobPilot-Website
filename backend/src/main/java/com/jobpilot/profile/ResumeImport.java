@@ -58,7 +58,7 @@ final class ResumeImport {
         if (raw != null) try { j = JSON.readTree(raw); } catch (RuntimeException e) { notes.add("The AI's answer wasn't readable, so only contact details and skills were filled."); }
         else notes.add("Local AI isn't available, so only contact details and skills were filled. Add your jobs on this page.");
 
-        String lower = text.toLowerCase(Locale.ROOT);
+        String lower = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " "); // PDF extraction wraps lines mid-name
         String title = inText(str(j, "currentTitle"), lower);
         String location = inText(str(j, "location"), lower);
         String headline = grounded(str(j, "headline"), text) ? cut(str(j, "headline"), 200) : null;
@@ -152,7 +152,7 @@ final class ResumeImport {
 
     /** The value only if the resume contains it (case-insensitive). */
     static String inText(String value, String lowerText) {
-        return value != null && !value.isBlank() && lowerText.contains(value.strip().toLowerCase(Locale.ROOT)) ? value.strip() : null;
+        return value != null && !value.isBlank() && lowerText.contains(value.strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ")) ? value.strip() : null;
     }
 
     private static final Map<String, Integer> MONTHS = new HashMap<>();

@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, ApiError, type Education, type Experience, type Profile } from '../api'
 
 const emptyExp: Experience = { company: '', title: '', location: null, startDate: '', endDate: null, description: null }
@@ -14,10 +15,30 @@ export default function ProfilePage() {
   const [error, setError] = useState<ApiError | null>(null)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [notes, setNotes] = useState<string[] | null>(null)
+  const [params, setParams] = useSearchParams()
+  const autoImport = useRef(params.has('import')) // ref: StrictMode runs effects twice; one ~50s model call is enough
 
   useEffect(() => {
     api.getProfile().then(load).catch(setError)
+    if (autoImport.current) { autoImport.current = false; setParams({}, { replace: true }); fillFromResume() }
   }, [])
+
+  async function fillFromResume() {
+    setImporting(true)
+    setError(null)
+    try {
+      const r = await api.importProfile()
+      load(r.profile)
+      setNotes(r.notes)
+      setSaved(false)
+    } catch (err) {
+      setError(err instanceof ApiError ? err : new ApiError(0, 'NETWORK', 'Cannot reach the server'))
+    } finally {
+      setImporting(false)
+    }
+  }
 
   function load(x: Profile) {
     setP(x)
@@ -48,6 +69,7 @@ export default function ProfilePage() {
         salaryCurrency: p.salaryCurrency?.toUpperCase() || null,
       }))
       setSaved(true)
+      setNotes(null)
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, 'NETWORK', 'Cannot reach the server'))
     } finally {
@@ -66,8 +88,20 @@ export default function ProfilePage() {
             This is the only information the agent may use when it answers application questions. Keep it accurate. It never invents anything.
           </p>
         </div>
-        {p.updatedAt && <span className="text-xs text-muted">Last saved {new Date(p.updatedAt).toLocaleString()}</span>}
+        <div className="flex flex-col items-end gap-1">
+          <button type="button" className="btn-ghost" disabled={importing} onClick={fillFromResume}>
+            {importing ? 'Reading your resume… (up to a minute)' : 'Fill from my resume'}
+          </button>
+          {p.updatedAt && <span className="text-xs text-muted">Last saved {new Date(p.updatedAt).toLocaleString()}</span>}
+        </div>
       </div>
+
+      {notes && (
+        <div role="status" className="rounded-md border border-signal/40 bg-signal/10 px-4 py-3 text-sm">
+          <b>Filled from your resume. Check everything, then press Save profile.</b> Nothing is saved until you do.
+          {notes.length > 0 && <ul className="mt-2 list-disc pl-5 text-muted">{notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+        </div>
+      )}
 
       <Section title="Basics">
         <Field label="Headline" span>{<input className="field" maxLength={200} placeholder="e.g. Backend engineer, Java & Spring" {...text('headline')} />}</Field>

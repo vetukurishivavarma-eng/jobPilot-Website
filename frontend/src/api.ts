@@ -107,6 +107,7 @@ export const api = {
 
   getProfile: () => request<Profile>('GET', '/profile'),
   saveProfile: (p: Profile) => request<Profile>('PUT', '/profile', p),
+  importProfile: () => request<{ profile: Profile; notes: string[] }>('POST', '/profile/import'),
 
   listResumes: () => request<Resume[]>('GET', '/resumes'),
   uploadResume: (file: File, label?: string) => {

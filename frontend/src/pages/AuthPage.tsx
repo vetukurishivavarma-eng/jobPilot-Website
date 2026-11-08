@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, ApiError, token } from '../api'
 import { useSession } from '../session'
 
 export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { setUser } = useSession()
+  const nav = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
@@ -19,6 +20,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     try {
       const res = isRegister ? await api.register(email, password, fullName) : await api.login(email, password)
       token.set(res.token)
+      if (isRegister) nav('/resumes?welcome=1')
       setUser(res.user)
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, 'NETWORK', 'Cannot reach the server'))

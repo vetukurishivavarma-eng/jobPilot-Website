@@ -63,6 +63,13 @@ class ResumeImportTest {
     }
 
     @Test
+    void namesWrappedAcrossPdfLinesStillMatch() {
+        String lower = "worked at tata consultancy\nservices in   bengaluru".toLowerCase().replaceAll("\\s+", " ");
+        assertEquals("Tata Consultancy Services", ResumeImport.inText("Tata Consultancy Services", lower));
+        assertNull(ResumeImport.inText("Infosys", lower));
+    }
+
+    @Test
     void dropsWhatIsNotInTheResume() {
         String liar = """
                 {"currentTitle":"Engineering Manager","location":"London",
