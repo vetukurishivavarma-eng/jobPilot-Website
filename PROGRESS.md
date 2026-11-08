@@ -1,6 +1,13 @@
 # JobPilot AI — Progress
 
-## 2026-11-08 late: extension now runs auto mode hands-free (not live-tested)
+## 2026-11-08 night: LIVE-TESTED extension queue (9396b58)
+- Lever: queue opened Hevo SDE I, filled, user submitted, thank-you page marked it SUBMITTED. Lever location fixed (widget ignores synthetic typing -> call /searchLocations, set input + hidden selectedLocation {name,id}).
+- Greenhouse (Okta): board URL redirects to okta.com's own Drupal form (extension can't run there) -> applyUrl is now the embed form `job-boards.greenhouse.io/embed/job_app?for=X&token=ID`. React-selects open on MOUSEUP (wrapper div onMouseUp), and the phone widget has ~244 hidden role=option rows -> pick only from the input's aria-controls listbox. Verified on the live Okta form: text fields, resume, country, city, yes/no questions all fill. Demographic selects not re-checked after the fix.
+- Review page button is now "Open and fill" (link to applyUrl; extension fills). The Playwright /fill endpoint + BrowserFiller are unused by the UI now (delete later if the extension holds up).
+- Paytm was applied outside JobPilot -> marked submitted by hand. Hevo SDE II has a stale submittedAt; queue skips anything with submittedAt.
+- Extension skip list (chrome.storage.local 'skip') can hold Okta if its tab was closed: use "Open and fill" on the review page.
+
+## 2026-11-08 late: extension now runs auto mode hands-free
 - User asked to drop the manual "press Fill" step. Server auto mode now ONLY prepares; the Playwright submit loop is gone from it (Lever rejects that window). Manual "Fill application form" button still uses Playwright.
 - Extension 0.2.0 (reload it in chrome://extensions): `background.js` queue, chrome.alarms every 2 min (+ on sign-in): if auto mode is on and under the daily limit, opens the next READY `auto` application with 0 missing (DTO now has `applyUrl`) in a background tab. `fill.js` fills on load on ANY prepared form (button = refill). Queue tab + "Submit for me" -> clicks Submit, waits 30s for the thank-you page -> marks applied, closes tab, next. CAPTCHA challenge / unfilled field / no Submit button / review mode (Submit for me off) -> notification + tab brought to front + app added to the extension's skip list (not reopened). Closing the tab = skip.
 - FIRST LIVE TEST: start.ps1, reload extension, open localhost:5173 signed in, Auto mode on (+Submit for me), Run now; watch the Hevo/Paytm tabs.
