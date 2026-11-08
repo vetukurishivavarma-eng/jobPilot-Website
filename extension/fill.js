@@ -240,6 +240,8 @@
       if (document.querySelector('input[type=file]')) {
         btn.onclick = () => fill();
         document.documentElement.appendChild(host);
+        // Greenhouse's new boards re-render the whole document after loading, which removes our button: put it back
+        setInterval(() => { if (!host.isConnected) document.documentElement.appendChild(host) }, 1000);
         await sleep(1000); // let React finish hydrating before typing
         const role = await ask({ type: 'role' });
         return role.auto ? auto(role) : fill(true);
