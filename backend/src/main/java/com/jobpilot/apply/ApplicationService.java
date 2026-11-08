@@ -118,15 +118,9 @@ public class ApplicationService {
         try {
             // the site sees the original file name, so write the bytes to a temp file with that name
             dir = Files.createTempDirectory("jobpilot-resume");
-            Optional<byte[]> tailored = tailor.resumePdf(userId, job.id());
-            if (tailored.isPresent()) { // the job's tailored resume goes instead of the default one
-                String name = users.findById(userId).map(User::getFullName).orElse("Resume");
-                resume = dir.resolve((name + " - Resume.pdf").replaceAll("[\\\\/:*?\"<>|]", "_"));
-                Files.write(resume, tailored.get());
-            } else {
-                resume = dir.resolve(r.originalFilename().replaceAll("[\\\\/:*?\"<>|]", "_"));
-                Files.write(resume, files.read(r.storageKey()));
-            }
+            ResumeFile rf = resumeFile(userId, a, job);
+            resume = dir.resolve(rf.name());
+            Files.write(resume, rf.bytes());
             Files.createDirectories(screenshots);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -152,6 +146,49 @@ public class ApplicationService {
             throw busy();
         }
         return done;
+    }
+
+    public record ResumeFile(String name, String contentType, byte[] bytes) {}
+
+    /** The file to attach: the job's tailored resume (as PDF) if there is one, otherwise the application's resume. */
+    public ResumeFile resumeFile(UUID userId, Application a, Job job) throws IOException {
+        Optional<byte[]> tailored = tailor.resumePdf(userId, job.id());
+        if (tailored.isPresent()) {
+            String name = users.findById(userId).map(User::getFullName).orElse("Resume");
+            return new ResumeFile(safeName(name + " - Resume.pdf"), "application/pdf", tailored.get());
+        }
+        Resume r = a.resumeId == null ? null : resumes.findByIdAndUserId(a.resumeId, userId).orElse(null);
+        if (r == null) throw new ApiException(HttpStatus.CONFLICT, "NO_RESUME", "The resume for this application was deleted. Upload one and start again.");
+        return new ResumeFile(safeName(r.originalFilename()), r.contentType(), files.read(r.storageKey()));
+    }
+
+    private static String safeName(String s) { return s.replaceAll("[\\\\/:*?\"<>|]", "_"); }
+
+    /** The application for the job whose apply page is at {@code url} (the browser extension asks this). */
+    public Optional<Application> forPage(UUID userId, String url) {
+        String[] job = jobOfPage(url);
+        if (job == null) return Optional.empty();
+        return jobs.findBySourceAndExternalId(job[0], job[1]).flatMap(j -> apps.findByUserIdAndJobId(userId, j.id()));
+    }
+
+    private static final java.util.regex.Pattern LEVER_PAGE = java.util.regex.Pattern.compile("^https://jobs\\.(?:eu\\.)?lever\\.co/[^/]+/([0-9a-f-]{36})");
+    private static final java.util.regex.Pattern GH_PAGE = java.util.regex.Pattern.compile("^https://(?:job-boards|boards)(?:\\.eu)?\\.greenhouse\\.io/[^/?]+/jobs/(\\d+)");
+    private static final java.util.regex.Pattern GH_PARAM = java.util.regex.Pattern.compile("[?&](?:gh_jid|token)=(\\d+)");
+
+    /** {source, externalId} for a Lever or Greenhouse job page (including Greenhouse's embedded form), or null. */
+    static String[] jobOfPage(String url) {
+        if (url == null) return null;
+        java.util.regex.Matcher m;
+        if ((m = LEVER_PAGE.matcher(url)).find()) return new String[]{"lever", m.group(1)};
+        if ((m = GH_PAGE.matcher(url)).find()) return new String[]{"greenhouse", m.group(1)};
+        if (url.contains("greenhouse.io/") && (m = GH_PARAM.matcher(url)).find()) return new String[]{"greenhouse", m.group(1)};
+        return null;
+    }
+
+    /** The user submitted it themselves (the extension saw the site's thank-you page). */
+    public void markSubmitted(UUID userId, UUID appId) {
+        own(userId, appId);
+        update(appId, x -> { x.status = Application.Status.SUBMITTED; x.submittedAt = Instant.now(); x.error = null; });
     }
 
     /** A browser session can't outlive the backend: anything left "filling" by a restart goes back to ready. */

@@ -90,6 +90,34 @@ public class ApplicationController {
         return get(userId, id);
     }
 
+    /** For the browser extension: the application for the job page the user has open. */
+    @GetMapping("/for-page")
+    public ApplicationDto forPage(@AuthenticationPrincipal UUID userId, @RequestParam String url) {
+        Application a = service.forPage(userId, url).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_PREPARED",
+                "JobPilot hasn't prepared this job yet. Find it in JobPilot and press Apply with agent."));
+        return dto(a, jobs.findById(a.jobId).orElse(null));
+    }
+
+    /** The resume file to attach (tailored for the job if there is one). */
+    @GetMapping("/{id}/resume")
+    public ResponseEntity<byte[]> resume(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) throws IOException {
+        Application a = service.own(userId, id);
+        Job job = jobs.findById(a.jobId).orElseThrow(() -> ApiException.notFound("Job"));
+        ApplicationService.ResumeFile f = service.resumeFile(userId, a, job);
+        return ResponseEntity.ok()
+                .header("Content-Disposition", org.springframework.http.ContentDisposition.attachment().filename(f.name(), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .header("Access-Control-Expose-Headers", "Content-Disposition")
+                .contentType(MediaType.parseMediaType(f.contentType() == null ? "application/octet-stream" : f.contentType()))
+                .body(f.bytes());
+    }
+
+    /** The user submitted the form themselves; the extension saw the site's thank-you page. */
+    @PostMapping("/{id}/submitted")
+    public ApplicationDto submitted(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
+        service.markSubmitted(userId, id);
+        return get(userId, id);
+    }
+
     @GetMapping(value = "/{id}/screenshot", produces = MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> screenshot(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) throws IOException {
         Application a = service.own(userId, id);

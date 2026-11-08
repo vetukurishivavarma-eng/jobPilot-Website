@@ -21,7 +21,10 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtFilter, AppProperties props) throws Exception {
         CorsConfiguration cors = new CorsConfiguration();
-        cors.setAllowedOrigins(props.corsOrigins());
+        // the JobPilot browser extension calls the API from its own chrome-extension:// origin (bearer token, no cookies)
+        List<String> origins = new java.util.ArrayList<>(props.corsOrigins());
+        origins.add("chrome-extension://*");
+        cors.setAllowedOriginPatterns(origins);
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cors.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         UrlBasedCorsConfigurationSource corsSource = new UrlBasedCorsConfigurationSource();

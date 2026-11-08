@@ -32,6 +32,7 @@ public class Resume {
     public String label() { return label; }
     public String originalFilename() { return originalFilename; }
     public String storageKey() { return storageKey; }
+    public String contentType() { return contentType; }
     public String extractedText() { return extractedText; }
     public boolean isPrimary() { return primary; }
 }
