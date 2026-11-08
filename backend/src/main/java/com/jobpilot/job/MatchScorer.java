@@ -129,16 +129,98 @@ public final class MatchScorer {
         return INDIA.stream().anyMatch(p::contains);
     }
 
+    // ------------------------------------------------------------------ does the job fit the resume
+    // Decides which jobs a user sees at all, from their resume alone (no hand-picked roles needed).
+
+    private static final Set<String> LANGUAGES = Set.of("java", "kotlin", "scala", "python", "javascript", "typescript", "c++", "c#",
+            ".net", "go", "rust", "ruby", "php", "swift", "flutter");
+    // a software-development title: "engineer" alone is too loose (security, IT automation, people systems, AI agent engineers)
+    private static final java.util.regex.Pattern DEV_TITLE = java.util.regex.Pattern.compile(
+            "(?i)\\b(software|developer|development engineer|sde|swe|programmer|mts|member of technical staff|full[- ]?stack|back[- ]?end)\\b");
+    private static final java.util.regex.Pattern NOT_DEV_TITLE = java.util.regex.Pattern.compile(
+            "(?i)\\b(sales|account executive|account manager|recruit\\w*|marketing|customer success|support engineer|solutions? (engineer|consultant|architect)"
+            + "|pre-?sales|field engineer|network engineer|hardware|mechanical|electrical|civil|manager|director|head of|vp|vice president|chief)\\b");
+
+    /** A technology named in a title, and the resume skills (canonical names, lower case) that count as having it. */
+    private record Stack(java.util.regex.Pattern title, Set<String> skills) {}
+    private static Stack stack(String regex, String... skills) { return new Stack(java.util.regex.Pattern.compile("(?i)" + regex), Set.of(skills)); }
+    private static final List<Stack> STACKS = List.of(
+            stack("\\bjava\\b(?!\\s*script)", "java"),
+            stack("\\bpython\\b", "python"),
+            stack("\\bgolang\\b|\\bgo\\b(?![- ]to)", "go"),
+            stack("\\bruby\\b|\\brails\\b", "ruby", "ruby on rails"),
+            stack("\\bphp\\b", "php"),
+            stack("\\.net\\b|\\bdotnet\\b|c#", "c#", ".net"),
+            stack("c\\+\\+", "c++"),
+            stack("\\brust\\b", "rust"),
+            stack("\\bscala\\b", "scala"),
+            stack("\\bnode(\\.?js)?\\b", "node.js"),
+            stack("front[- ]?end|\\breact\\b(?! native)|\\bangular\\b|\\bvue\\b|\\bui (engineer|developer)\\b", "react", "angular", "vue.js", "typescript"),
+            stack("\\bios\\b|\\bswift\\b", "ios", "swift"),
+            stack("\\bandroid\\b|\\bkotlin\\b", "android", "kotlin"),
+            stack("\\bflutter\\b", "flutter"),
+            stack("react native", "react native"),
+            stack("data scien|machine learning|\\bml\\b|\\bai engineer|deep learning|\\bnlp\\b|computer vision", "machine learning", "tensorflow", "pytorch"),
+            stack("data engineer", "spark", "hadoop", "airflow"),
+            stack("devops|\\bsre\\b|site reliability|cloud engineer|infrastructure engineer", "kubernetes", "terraform"),
+            stack("\\bsdet\\b|\\bqa\\b|quality (assurance|engineer)|\\btest(s|er|ers|ing)?\\b", "selenium"),
+            stack("salesforce", "salesforce"),
+            stack("\\bsap\\b", "sap"),
+            stack("embedded|firmware", "c++"));
+
+    /** Years a title implies regardless of what the description says (staff and above are hard levels). */
+    private static int hardLevel(String t) {
+        if (t.matches("(?is).*\\b(distinguished|fellow)\\b.*")) return 12;
+        if (t.matches("(?is).*\\b(principal|senior staff|sr\\.? staff)\\b.*")) return 10;
+        if (t.matches("(?is).*\\b(staff|architect)\\b.*")) return 8;
+        if (t.matches("(?is).*\\b(sde|software development engineer|engineer|developer)[- ]?(iv|4)\\b.*")) return 7;
+        if (t.matches("(?is).*\\b(sde|software development engineer|engineer|developer)[- ]?(iii|3)\\b.*")) return 5;
+        return 0;
+    }
+
+    /** How far above the candidate's years a job may ask before it's hidden. */
+    static final double STRETCH_YEARS = 1.5;
+
     /**
-     * The job list shows only jobs in the candidate's line of work: the title matches one of their desired roles, and if
-     * the posting lists skills, at least one of them is the candidate's (a Python-only job is hidden from a Java developer).
+     * True when the job fits what the resume shows: their field (any programming language on the resume = developer
+     * titles only; otherwise their desired roles), every technology the title names that they lack hides it (a Python
+     * SDE for a Java developer), the level (years the posting or title asks vs their years, intern roles hidden after
+     * 2 years), and a fair share of the skills the posting lists.
      */
-    public static boolean fitsRoleAndSkills(Candidate c, String title, List<String> jobSkills) {
-        if (c.desiredRoles() != null && !c.desiredRoles().isEmpty() && (title == null || !RoleMatch.matches(title, c.desiredRoles()))) return false;
-        if (jobSkills == null || jobSkills.isEmpty() || c.skills() == null || c.skills().isEmpty()) return true;
+    public static boolean fitsResume(Candidate c, String title, List<String> jobSkills, Integer minYears, String seniority) {
+        if (title == null) return false;
         Set<String> mine = new HashSet<>();
-        c.skills().forEach(x -> mine.add(x.toLowerCase(Locale.ROOT)));
-        return jobSkills.stream().anyMatch(x -> mine.contains(x.toLowerCase(Locale.ROOT)));
+        if (c.skills() != null) c.skills().forEach(x -> mine.add(x.toLowerCase(Locale.ROOT)));
+
+        // field
+        boolean developer = mine.stream().anyMatch(LANGUAGES::contains);
+        if (developer) {
+            // or a title naming a technology on their resume ("Java Engineer")
+            boolean devTitle = DEV_TITLE.matcher(title).find()
+                    || STACKS.stream().anyMatch(st -> st.title().matcher(title).find() && st.skills().stream().anyMatch(mine::contains));
+            if (!devTitle || NOT_DEV_TITLE.matcher(title).find()) return false;
+        } else if (c.desiredRoles() != null && !c.desiredRoles().isEmpty() && !RoleMatch.matches(title, c.desiredRoles())) return false;
+
+        // technologies named in the title: the candidate needs at least one of them
+        List<Stack> named = STACKS.stream().filter(st -> st.title().matcher(title).find()).toList();
+        if (!named.isEmpty() && !mine.isEmpty() && named.stream().noneMatch(st -> st.skills().stream().anyMatch(mine::contains))) return false;
+
+        // level
+        if (c.years() != null) {
+            double y = c.years().doubleValue();
+            if (y >= 2 && ENTRY_TITLE.matcher(title).find()) return false;
+            Integer need = minYears != null ? minYears : seniority == null ? null : SENIORITY_YEARS.get(seniority);
+            int hard = hardLevel(title);
+            if (hard > 0) need = need == null ? hard : Math.max(need, hard);
+            if (need != null && need > y + STRETCH_YEARS) return false;
+        }
+
+        // requirements: a fair share of the listed skills (about 30%, at least one)
+        if (jobSkills != null && !jobSkills.isEmpty() && !mine.isEmpty()) {
+            long have = jobSkills.stream().filter(x -> mine.contains(x.toLowerCase(Locale.ROOT))).count();
+            if (have < Math.max(1, Math.ceil(jobSkills.size() * 0.3))) return false;
+        }
+        return true;
     }
 
     /** Jobs JobPilot keeps at all: located in India, or remote and not tied to another country. */

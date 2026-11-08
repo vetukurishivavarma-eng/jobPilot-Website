@@ -36,9 +36,9 @@ public class MatchService {
         });
     }
 
-    /** In the user's preferred locations, role and skills: the only jobs the list and auto mode show. Needs skills loaded. */
+    /** In the user's preferred locations and fitting their resume (field, stack, level, requirements): the only jobs the list and auto mode show. Needs skills loaded. */
     public boolean relevant(MatchScorer.Candidate c, Job j) {
-        return MatchScorer.inDesiredLocation(c, j.location, j.workplace) && MatchScorer.fitsRoleAndSkills(c, j.title, j.skills);
+        return MatchScorer.inDesiredLocation(c, j.location, j.workplace) && MatchScorer.fitsResume(c, j.title, j.skills, j.minYears, j.seniority);
     }
 
     /** Needs the job's skills loaded (inside a transaction, or a job fetched with them). */

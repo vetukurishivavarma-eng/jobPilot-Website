@@ -104,11 +104,28 @@ class MatchScorerTest {
     }
 
     @org.junit.jupiter.api.Test
-    void onlyMyRoleAndSkills() {
-        MatchScorer.Candidate dev = new MatchScorer.Candidate(Set.of("Java", "Spring Boot"), new BigDecimal(3), List.of("Java Developer", "Software Engineer"), List.of("Hyderabad"), false, null, null);
-        assertTrue(MatchScorer.fitsRoleAndSkills(dev, "Software Engineer II", List.of("Java", "Kafka")));
-        assertTrue(MatchScorer.fitsRoleAndSkills(dev, "Senior Java Developer", List.of()), "no skills listed: title decides");
-        assertFalse(MatchScorer.fitsRoleAndSkills(dev, "Area Collections Manager", List.of()), "other role");
-        assertFalse(MatchScorer.fitsRoleAndSkills(dev, "Software Engineer", List.of("Python", "Go")), "none of my skills");
+    void fitsResume() {
+        // the live user's resume: Java/Spring backend developer, ~2.8 years
+        MatchScorer.Candidate dev = new MatchScorer.Candidate(Set.of("Java", "Spring Boot", "Kafka", "Redis", "PostgreSQL", "Docker",
+                "Jenkins", "SQL", "Hibernate", "Maven", "Git", "JavaScript"), new BigDecimal("2.8"), List.of("System Engineer"), List.of("Hyderabad"), false, null, null);
+        assertTrue(MatchScorer.fitsResume(dev, "Software Engineer II", List.of("Java", "Kafka"), 2, "MID"));
+        assertTrue(MatchScorer.fitsResume(dev, "Software Development Engineer - Java + Distributed Systems", List.of("Java"), 3, null));
+        assertTrue(MatchScorer.fitsResume(dev, "Senior Software Engineer", List.of("Java", "Spring Boot"), 3, "SENIOR"), "JD says 3+: senior in name only");
+        assertFalse(MatchScorer.fitsResume(dev, "Senior Software Engineer", List.of("Java"), null, "SENIOR"), "senior, no years stated = 5");
+        assertFalse(MatchScorer.fitsResume(dev, "Python SDE-III", List.of("Python", "Java"), null, "SENIOR"), "other language + level");
+        assertFalse(MatchScorer.fitsResume(dev, "Staff Software Development Engineer - Java/Go", List.of("Java", "Go"), 3, "LEAD"), "staff is a hard level");
+        assertFalse(MatchScorer.fitsResume(dev, "Golang Engineer", List.of(), null, null));
+        assertFalse(MatchScorer.fitsResume(dev, "Frontend Engineer", List.of("React", "TypeScript"), 2, null), "JavaScript from an internship isn't frontend");
+        assertFalse(MatchScorer.fitsResume(dev, "Area Collections Manager", List.of(), null, null), "not a developer title");
+        assertFalse(MatchScorer.fitsResume(dev, "Software Engineer Intern", List.of("Java"), null, "INTERN"), "below his level");
+        assertFalse(MatchScorer.fitsResume(dev, "Backend Engineer", List.of("Python", "Go", "Kubernetes", "Terraform", "Java"), 2, null), "1 of 5 listed skills");
+        assertFalse(MatchScorer.fitsResume(dev, "Software Engineer Manager (Database Observability)", List.of(), null, "MANAGER"));
+        assertTrue(MatchScorer.fitsResume(dev, "Java Engineer", List.of("Java"), 3, null), "names his language");
+        for (String other : List.of("Agent Developer Test III", "People Systems Engineer", "AI Agent Engineer", "Product Security Engineer II", "Senior IT Automation Engineer"))
+            assertFalse(MatchScorer.fitsResume(dev, other, List.of("Java", "SQL"), 3, null), other);
+        // someone without programming languages: their desired roles decide the field
+        MatchScorer.Candidate accountant = new MatchScorer.Candidate(Set.of("Tally", "GST"), new BigDecimal(4), List.of("Accountant"), List.of(), false, null, null);
+        assertTrue(MatchScorer.fitsResume(accountant, "Senior Accountant", List.of("GST"), 3, "SENIOR"));
+        assertFalse(MatchScorer.fitsResume(accountant, "Software Engineer", List.of(), null, null));
     }
 }

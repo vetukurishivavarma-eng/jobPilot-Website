@@ -1,5 +1,13 @@
 # JobPilot AI — Progress
 
+## 2026-11-09 later: jobs chosen from the resume (`MatchScorer.fitsResume`), for every profile
+- Field: any programming language in resume/profile skills = developer -> title must say software/developer/SDE/SWE/backend/full stack/programmer/MTS, or name a technology they have ("Java Engineer"); not sales/support/solutions/manager etc. Non-developers: desired roles (RoleMatch) decide.
+- Stack: every technology a title names (STACKS table: Java, Python, Go, .NET, frontend, iOS, Android, data science, data eng, DevOps/SRE, QA/test, Salesforce, SAP...) -> candidate needs one of them.
+- Level: years = JD minYears, else seniority default, raised to hard title levels (staff 8, principal 10, SDE-III 5, SDE-IV 7); hidden if > candidate years + 1.5. Intern/new-grad hidden at 2+ years.
+- Requirements: >= 30% (min 1) of the posting's listed skills on the resume.
+- Jobs the user added ("Add a job", origin IMPORT) always show. Live user (Java/Spring, ~3y10m, Hyderabad): 4 jobs (Zscaler Java SDE, Coinbase x2, Twilio L3).
+- Earlier I told the user ~3 years; it's 3y10m (01/2023-now). Profile says 4.
+
 ## 2026-11-09: no more following -> shared company catalog; list = location + role + skills
 - `backend/src/main/resources/catalog.txt`: 38 Greenhouse/Lever boards verified (probe 2026-11-08) to have India openings. Discovery ("Find jobs now" + 6h cron) fetches every board once and links its India/remote-India jobs (`MatchScorer.inMarket`) to the user(s). Test classpath has an empty catalog.txt (no network in tests). CompanyController/CompanySource + Companies page REMOVED (company_sources table left in DB, unused).
 - Jobs list + auto mode show only `MatchService.relevant`: preferred location AND title matches a desired role (RoleMatch) AND (posting lists no skills OR shares one with the candidate). Unrelated-role score also capped at 40.
