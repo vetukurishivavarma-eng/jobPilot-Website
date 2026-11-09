@@ -169,14 +169,6 @@ class ApplyTest {
         assertEquals("https://job-boards.greenhouse.io/embed/job_app?for=databricks&token=7", ApplicationService.applyUrl("greenhouse", "greenhouse:databricks", "7", "https://databricks.com/careers?gh_jid=7"));
         assertEquals("https://job-boards.greenhouse.io/embed/job_app?for=x&token=7", ApplicationService.applyUrl("greenhouse", "greenhouse:x", "7", "https://evil.example/greenhouse.io/"));
 
-        // confirmation detection: the sites' thank-you pages, not the form itself
-        assertTrue(BrowserFiller.CONFIRMED_URL.matcher("https://job-boards.greenhouse.io/groww/jobs/1/confirmation").find());
-        assertTrue(BrowserFiller.CONFIRMED_URL.matcher("https://jobs.lever.co/meesho/abc/thanks").find());
-        assertFalse(BrowserFiller.CONFIRMED_URL.matcher("https://jobs.lever.co/meesho/abc/apply").find());
-        assertFalse(BrowserFiller.CONFIRMED_URL.matcher("https://jobs.lever.co/thanksgiving-co/abc/apply").find());
-        assertTrue(BrowserFiller.CONFIRMED_TEXT.matcher("Thank you for applying to Groww!").find());
-        assertFalse(BrowserFiller.CONFIRMED_TEXT.matcher("Submit your application").find());
-        assertEquals("cards[a\\\"b]", BrowserFiller.css("cards[a\"b]"));
     }
 
     // ------------------------------------------------------------ auto mode

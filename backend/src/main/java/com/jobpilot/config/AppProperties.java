@@ -7,7 +7,7 @@ import java.util.List;
 @ConfigurationProperties("jobpilot")
 public record AppProperties(String jwtSecret, int jwtTtlHours, String storageDir, List<String> corsOrigins,
                             String adzunaAppId, String adzunaAppKey, String adzunaCountry,
-                            String ollamaUrl, String ollamaModel, boolean applyDryRun,
+                            String ollamaUrl, String ollamaModel,
                             String llmUrl, String llmApiKey, String llmModel) {
     public AppProperties {
         if (jwtSecret == null || jwtSecret.length() < 32)

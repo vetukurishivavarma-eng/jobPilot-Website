@@ -50,5 +50,3 @@ jobpilot:
   llm-model: ${LLM_MODEL:}
   # Auto mode runs for users who switched it on (Spring cron; "-" disables).
   auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}
-  # Test mode for the apply agent: forms are filled but nothing is ever sent to the employer.
-  apply-dry-run: ${APPLY_DRY_RUN:false}

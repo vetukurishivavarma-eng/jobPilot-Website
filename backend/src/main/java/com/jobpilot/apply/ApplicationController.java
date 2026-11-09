@@ -83,13 +83,6 @@ public class ApplicationController {
         return dto(a, job);
     }
 
-    /** Opens the form in a visible Chrome window and fills it; the user checks it and submits. */
-    @PostMapping("/{id}/fill")
-    public ApplicationDto fill(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
-        service.fill(userId, id, false);
-        return get(userId, id);
-    }
-
     /** For the browser extension: the application for the job page the user has open. */
     @GetMapping("/for-page")
     public ApplicationDto forPage(@AuthenticationPrincipal UUID userId, @RequestParam String url) {

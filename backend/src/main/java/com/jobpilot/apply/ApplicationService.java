@@ -19,12 +19,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.type.TypeReference;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -42,14 +40,13 @@ public class ApplicationService {
     private final ResumeRepository resumes;
     private final Ollama ollama;
     private final TransactionTemplate tx;
-    private final BrowserFiller filler;
     private final ResumeFiles files;
     private final TailorService tailor;
     final Path screenshots;
 
     ApplicationService(ApplicationRepository apps, AnswerBankRepository bank, JobRepository jobs, UserJobRepository links,
                        UserRepository users, ProfileRepository profiles, ResumeRepository resumes, Ollama ollama, TransactionTemplate tx,
-                       BrowserFiller filler, ResumeFiles files, AppProperties props, TailorService tailor) {
+                       ResumeFiles files, AppProperties props, TailorService tailor) {
         this.tailor = tailor;
         this.apps = apps;
         this.bank = bank;
@@ -60,7 +57,6 @@ public class ApplicationService {
         this.resumes = resumes;
         this.ollama = ollama;
         this.tx = tx;
-        this.filler = filler;
         this.files = files;
         this.screenshots = Path.of(props.storageDir()).toAbsolutePath().getParent().resolve("screenshots");
     }
@@ -95,57 +91,6 @@ public class ApplicationService {
         a.auto = auto;
         set(a, filled);
         return apps.save(a);
-    }
-
-    /**
-     * Opens the form in a visible Chrome window and fills it. With {@code autoSubmit} the agent also presses Submit,
-     * and hands over to the user if the site asks for a human check. Otherwise the user checks the form and submits.
-     * The returned future completes when the session ends.
-     */
-    public CompletableFuture<BrowserFiller.Report> fill(UUID userId, UUID appId, boolean autoSubmit) {
-        Application a = own(userId, appId);
-        if (a.status == Application.Status.SUBMITTED) throw new ApiException(HttpStatus.CONFLICT, "ALREADY_SUBMITTED", "You've already applied to this job");
-        if (a.status == Application.Status.FILLING) throw new ApiException(HttpStatus.CONFLICT, "ALREADY_FILLING", "The form is already open in a browser window");
-        List<FormField> fields = fields(a);
-        if (fields.stream().anyMatch(FormField::missing))
-            throw new ApiException(HttpStatus.CONFLICT, "NEEDS_INPUT", "Answer the remaining required questions first");
-        if (filler.busy()) throw busy();
-        Job job = jobs.findById(a.jobId).orElseThrow(() -> ApiException.notFound("Job"));
-        Resume r = a.resumeId == null ? null : resumes.findByIdAndUserId(a.resumeId, userId).orElse(null);
-        if (r == null) throw new ApiException(HttpStatus.CONFLICT, "NO_RESUME", "The resume for this application was deleted. Upload one and start again.");
-
-        Path dir, resume;
-        try {
-            // the site sees the original file name, so write the bytes to a temp file with that name
-            dir = Files.createTempDirectory("jobpilot-resume");
-            ResumeFile rf = resumeFile(userId, a, job);
-            resume = dir.resolve(rf.name());
-            Files.write(resume, rf.bytes());
-            Files.createDirectories(screenshots);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-        update(appId, x -> { x.status = Application.Status.FILLING; x.error = null; x.screenshotKey = appId + ".png"; });
-
-        CompletableFuture<BrowserFiller.Report> done = filler.start(
-                new BrowserFiller.Session(applyUrl(job), fields, resume, screenshots.resolve(appId + ".png"), autoSubmit),
-                note -> update(appId, x -> x.error = note),
-                end -> {
-                    update(appId, x -> {
-                        switch (end.outcome()) {
-                            case "SUBMITTED" -> { x.status = Application.Status.SUBMITTED; x.submittedAt = Instant.now(); x.error = null; }
-                            case "CLOSED" -> { x.status = Application.Status.READY; x.error = "The browser window was closed before the application was submitted."; }
-                            case "TIMEOUT" -> { x.status = Application.Status.READY; x.error = "No submission seen within 30 minutes, so the window was closed."; }
-                            default -> { x.status = Application.Status.FAILED; x.error = end.error(); }
-                        }
-                    });
-                    try { Files.deleteIfExists(resume); Files.deleteIfExists(dir); } catch (IOException ignored) { }
-                });
-        if (done == null) {
-            update(appId, x -> x.status = Application.Status.READY);
-            throw busy();
-        }
-        return done;
     }
 
     public record ResumeFile(String name, String contentType, byte[] bytes) {}
@@ -253,7 +198,4 @@ public class ApplicationService {
         return "https://" + host + "/embed/job_app?for=" + token + "&token=" + externalId;
     }
 
-    private static ApiException busy() {
-        return new ApiException(HttpStatus.CONFLICT, "BROWSER_BUSY", "Another application window is open. Finish or close it first.");
-    }
 }
