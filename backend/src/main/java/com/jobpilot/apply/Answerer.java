@@ -152,21 +152,25 @@ final class Answerer {
         if (p.summary() != null) facts.append("Summary: ").append(p.summary()).append('\n');
         String resume = c.resumeText() == null ? "" : c.resumeText().substring(0, Math.min(6000, c.resumeText().length()));
         String jd = job.description() == null ? "" : job.description().substring(0, Math.min(3000, job.description().length()));
+        // Order = most stable first (rules, then this candidate, then this job, then this question), so the
+        // model's prompt cache (Ollama KV cache, cloud prefix caching) is reused across questions and jobs.
         return """
-                You are helping %s answer one question on a job application for "%s" at %s.
+                You help a job seeker answer one question on a job application.
                 Write the answer in first person, plain text, 60 to 150 words, no greeting or sign-off.
                 Use ONLY facts stated in the candidate facts or resume below. Never invent employers, numbers, degrees, dates or skills.
                 If these facts are not enough to answer honestly, reply with exactly: %s
 
-                QUESTION: %s
-
+                CANDIDATE: %s
                 CANDIDATE FACTS:
                 %s
                 RESUME:
                 %s
 
+                JOB: "%s" at %s
                 JOB DESCRIPTION:
                 %s
-                """.formatted(c.fullName(), job.title(), job.company(), NEED_INPUT, f.label(), facts, resume, jd);
+
+                QUESTION: %s
+                """.formatted(NEED_INPUT, c.fullName(), facts, resume, job.title(), job.company(), jd, f.label());
     }
 }

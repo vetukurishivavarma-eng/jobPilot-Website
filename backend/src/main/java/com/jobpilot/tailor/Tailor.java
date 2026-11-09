@@ -190,18 +190,21 @@ public final class Tailor {
 
     // ------------------------------------------------------------------ prompts
 
+    // Prompts put the rules, then the candidate's facts (same for every job), then the job, then the task, so the
+    // model's prompt cache is reused when one user tailors for many jobs.
     static String summaryPrompt(Facts f, JobInfo job) {
         return """
-                Write a 2-3 sentence professional summary for the top of %s's resume, aimed at a "%s" role at %s.
-                Resume style with no pronouns (like "Backend engineer with N years building ...").
-                Use ONLY facts below. Never add numbers, employers, degrees or skills that are not listed.
-                If the facts are too thin, reply exactly NEED_INPUT. Reply with the summary only.
+                Use ONLY the facts below. Never add numbers, employers, degrees or skills that are not listed.
+                If the facts are too thin, reply exactly NEED_INPUT.
 
                 FACTS:
                 %s
                 JOB DESCRIPTION (for emphasis only, not a source of facts):
                 %s
-                """.formatted(f.name(), job.title(), job.company(), f.all(), cut(job.description(), 2500));
+
+                TASK: Write a 2-3 sentence professional summary for the top of %s's resume, aimed at a "%s" role at %s.
+                Resume style with no pronouns (like "Backend engineer with N years building ..."). Reply with the summary only.
+                """.formatted(f.all(), cut(job.description(), 2500), f.name(), job.title(), job.company());
     }
 
     static String bulletsPrompt(Experience e, List<String> bullets, JobInfo job, Set<String> keywords) {
@@ -221,18 +224,18 @@ public final class Tailor {
 
     static String letterPrompt(Facts f, JobInfo job, List<String> avoid) {
         return """
-                Write a cover letter from %s for the "%s" role at %s. 150 to 250 words, plain text, first person.
-                Start with "Dear Hiring Team at %s," and end with the candidate's name.
-                Use ONLY facts from the candidate facts. Never invent employers, numbers, degrees, dates or skills.%s
+                Use ONLY facts from the candidate facts. Never invent employers, numbers, degrees, dates or skills.
                 If the facts are not enough, reply exactly NEED_INPUT.
 
                 CANDIDATE FACTS:
                 %s
                 JOB DESCRIPTION:
                 %s
-                """.formatted(f.name(), job.title(), job.company(), job.company(),
-                avoid.isEmpty() ? "" : "\nYour last draft broke these rules, fix them: it " + String.join("; it ", avoid) + ".",
-                f.all(), cut(job.description(), 3000));
+
+                TASK: Write a cover letter from %s for the "%s" role at %s. 150 to 250 words, plain text, first person.
+                Start with "Dear Hiring Team at %s," and end with the candidate's name.%s
+                """.formatted(f.all(), cut(job.description(), 3000), f.name(), job.title(), job.company(), job.company(),
+                avoid.isEmpty() ? "" : "\nYour last draft broke these rules, fix them: it " + String.join("; it ", avoid) + ".");
     }
 
     // ------------------------------------------------------------------ helpers
