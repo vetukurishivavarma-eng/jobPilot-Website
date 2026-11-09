@@ -32,7 +32,7 @@ public final class JobSources {
     private static final Pattern GH_URL = Pattern.compile("^https?://(?:job-boards|boards)(?:\\.eu)?\\.greenhouse\\.io/([A-Za-z0-9_-]+)(?:/jobs/(\\d+))?/?(?:[?#].*)?$");
     private static final Pattern LEVER_URL = Pattern.compile("^https?://jobs\\.lever\\.co/([A-Za-z0-9_-]+)(?:/([0-9a-f-]{36}))?(?:/apply)?/?(?:[?#].*)?$");
 
-    public enum Ats { GREENHOUSE, LEVER, WORKDAY }
+    public enum Ats { GREENHOUSE, LEVER, WORKDAY, SMARTRECRUITERS, ASHBY }
 
     public record BoardRef(Ats ats, String token, String jobId) {}
 
@@ -152,25 +152,8 @@ public final class JobSources {
             if (page.path("jobPostings").isEmpty()) break;
             for (JsonNode p : page.path("jobPostings")) if (str(p.path("externalPath")) != null) paths.add(str(p.path("externalPath")));
         }
-        // ponytail: one request per job (Workday's list has no descriptions), 4 at a time; cache by externalPath if boards grow
-        java.util.concurrent.Semaphore gate = new java.util.concurrent.Semaphore(4);
-        try (var ex = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-            List<java.util.concurrent.Future<JobDraft>> fs = new ArrayList<>();
-            for (String path : paths) fs.add(ex.submit(() -> {
-                gate.acquire();
-                try { return parseWorkdayJob(SafeHttp.get(api + path), token, company, host + "/" + m.group(3) + path); }
-                catch (SafeHttp.FetchException e) { return null; } // one unreadable job doesn't sink the board
-                finally { gate.release(); }
-            }));
-            List<JobDraft> out = new ArrayList<>();
-            for (var f : fs) { JobDraft d = f.get(); if (d != null) out.add(d); }
-            return out;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new SafeHttp.FetchException(502, "Interrupted");
-        } catch (java.util.concurrent.ExecutionException e) {
-            throw e.getCause() instanceof RuntimeException r ? r : new IllegalStateException(e.getCause());
-        }
+        String site = host + "/" + m.group(3);
+        return eachJob(paths, path -> parseWorkdayJob(SafeHttp.get(api + path), token, company, site + path));
     }
 
     private static String workdaySearch(Map.Entry<String, List<String>> facet, int offset, int limit) {
@@ -221,6 +204,92 @@ public final class JobSources {
         return new JobDraft("workday", firstNonNull(str(i.path("id")), str(i.path("jobReqId"))), "workday:" + token, url, url,
                 str(i.path("title")), company, location, workplaceFrom(location, str(i.path("remoteType"))), str(i.path("timeType")),
                 null, null, null, htmlToText(str(i.path("jobDescription"))), instant(str(i.path("startDate"))));
+    }
+
+    /**
+     * Reads one detail page per job (these APIs' lists have no descriptions), 4 at a time.
+     * ponytail: refetches every job each run; cache by id + posted date if boards grow.
+     */
+    static <T> List<JobDraft> eachJob(List<T> items, java.util.function.Function<T, JobDraft> read) {
+        java.util.concurrent.Semaphore gate = new java.util.concurrent.Semaphore(4);
+        try (var ex = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            List<java.util.concurrent.Future<JobDraft>> fs = new ArrayList<>();
+            for (T item : items) fs.add(ex.submit(() -> {
+                gate.acquire();
+                try { return read.apply(item); }
+                catch (SafeHttp.FetchException e) { return null; } // one unreadable job doesn't sink the board
+                finally { gate.release(); }
+            }));
+            List<JobDraft> out = new ArrayList<>();
+            for (var f : fs) { JobDraft d = f.get(); if (d != null) out.add(d); }
+            return out;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SafeHttp.FetchException(502, "Interrupted");
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw e.getCause() instanceof RuntimeException r ? r : new IllegalStateException(e.getCause());
+        }
+    }
+
+    // ---------------------------------------------------------------- SmartRecruiters (public Posting API)
+
+    /** A company's India postings (the API filters by country), then each posting for its description. */
+    public static List<JobDraft> smartRecruitersBoard(String company, String name) {
+        if (!TOKEN.matcher(company).matches()) throw new IllegalArgumentException("Bad SmartRecruiters company id: " + company);
+        String api = "https://api.smartrecruiters.com/v1/companies/" + company + "/postings";
+        List<String> ids = new ArrayList<>();
+        for (int offset = 0, total = 1; offset < Math.min(total, WORKDAY_MAX_JOBS); offset += 100) {
+            JsonNode page = JSON.readTree(SafeHttp.get(api + "?country=in&limit=100&offset=" + offset));
+            total = page.path("totalFound").asInt(0);
+            if (page.path("content").isEmpty()) break;
+            for (JsonNode p : page.path("content")) if (str(p.path("id")) != null) ids.add(str(p.path("id")));
+        }
+        return eachJob(ids, id -> parseSmartRecruitersJob(SafeHttp.get(api + "/" + id), company, name));
+    }
+
+    static JobDraft parseSmartRecruitersJob(String json, String company, String name) {
+        JsonNode j = JSON.readTree(json), loc = j.path("location");
+        String location = str(loc.path("fullLocation"));
+        if (location != null) location = location.replaceAll("(,\\s*)+", ", ");
+        StringBuilder d = new StringBuilder();
+        for (String k : List.of("jobDescription", "qualifications", "additionalInformation")) {
+            JsonNode sec = j.path("jobAd").path("sections").path(k);
+            String text = htmlToText(str(sec.path("text")));
+            if (text == null) continue;
+            if (str(sec.path("title")) != null) d.append(str(sec.path("title"))).append('\n');
+            d.append(text).append("\n\n");
+        }
+        return new JobDraft("smartrecruiters", str(j.path("id")), "smartrecruiters:" + company, str(j.path("postingUrl")),
+                firstNonNull(str(j.path("applyUrl")), str(j.path("postingUrl"))), str(j.path("name")),
+                firstNonNull(name, str(j.path("company").path("name")), company), location,
+                loc.path("remote").asBoolean(false) ? "REMOTE" : loc.path("hybrid").asBoolean(false) ? "HYBRID" : workplaceFrom(location, null),
+                str(j.path("typeOfEmployment").path("label")), null, null, null, blankToNull(d.toString().strip()), instant(str(j.path("releasedDate"))));
+    }
+
+    // ---------------------------------------------------------------- Ashby (public job-board API)
+
+    public static List<JobDraft> ashbyBoard(String org, String name) {
+        if (!TOKEN.matcher(org).matches()) throw new IllegalArgumentException("Bad Ashby board: " + org);
+        return parseAshby(SafeHttp.get("https://api.ashbyhq.com/posting-api/job-board/" + org), org, name);
+    }
+
+    static List<JobDraft> parseAshby(String json, String org, String name) {
+        List<JobDraft> out = new ArrayList<>();
+        for (JsonNode j : JSON.readTree(json).path("jobs")) {
+            if (!j.path("isListed").asBoolean(true)) continue;
+            List<String> locs = new ArrayList<>();
+            if (str(j.path("location")) != null) locs.add(str(j.path("location")));
+            for (JsonNode l : j.path("secondaryLocations")) if (str(l.path("location")) != null) locs.add(str(l.path("location")));
+            String country = str(j.path("address").path("postalAddress").path("addressCountry"));
+            String location = locs.isEmpty() ? country : String.join(" / ", locs);
+            if (country != null && location != null && !location.toLowerCase().contains(country.toLowerCase())) location += ", " + country;
+            out.add(new JobDraft("ashby", str(j.path("id")), "ashby:" + org, str(j.path("jobUrl")), firstNonNull(str(j.path("applyUrl")), str(j.path("jobUrl"))),
+                    str(j.path("title")), firstNonNull(name, prettify(org)), location,
+                    j.path("isRemote").asBoolean(false) ? "REMOTE" : workplaceFrom(location, str(j.path("workplaceType"))),
+                    str(j.path("employmentType")), null, null, null,
+                    firstNonNull(str(j.path("descriptionPlain")), htmlToText(str(j.path("descriptionHtml")))), instant(str(j.path("publishedAt")))));
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- Adzuna (official API, key required)

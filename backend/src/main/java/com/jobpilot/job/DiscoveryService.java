@@ -130,6 +130,8 @@ public class DiscoveryService {
                 case GREENHOUSE -> JobSources.greenhouseBoard(b.token(), b.name());
                 case LEVER -> JobSources.leverBoard(b.token(), b.name());
                 case WORKDAY -> JobSources.workdayBoard(b.token(), b.name());
+                case SMARTRECRUITERS -> JobSources.smartRecruitersBoard(b.token(), b.name());
+                case ASHBY -> JobSources.ashbyBoard(b.token(), b.name());
             };
             int fetched = 0, linked = 0;
             for (UUID u : userIds) {

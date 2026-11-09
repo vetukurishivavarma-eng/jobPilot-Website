@@ -58,3 +58,20 @@ workday:fmr.wd1/FidelityCareers Fidelity Investments
 workday:thomsonreuters.wd5/External_Career_Site Thomson Reuters
 workday:novartis.wd3/Novartis_Careers Novartis
 workday:pfizer.wd1/PfizerCareers Pfizer
+
+# SmartRecruiters (token = company id from jobs.smartrecruiters.com/<id>); India postings verified 2026-11-09
+smartrecruiters:ServiceNow ServiceNow
+smartrecruiters:Experian Experian
+smartrecruiters:Freshworks Freshworks
+smartrecruiters:BoschGroup Bosch
+smartrecruiters:Swiggy Swiggy
+smartrecruiters:NielsenIQ NielsenIQ
+smartrecruiters:AbbVie AbbVie
+
+# Ashby (token = board name from jobs.ashbyhq.com/<name>); India openings verified 2026-11-09
+ashby:sarvam Sarvam AI
+ashby:spotdraft SpotDraft
+ashby:elevenlabs ElevenLabs
+ashby:openai OpenAI
+ashby:atlan Atlan
+ashby:notion Notion

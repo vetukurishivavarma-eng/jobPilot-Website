@@ -74,6 +74,25 @@ class Phase2Test {
     }
 
     @Test
+    void smartRecruitersAndAshbyFixtures() throws Exception {
+        JobDraft s = JobSources.parseSmartRecruitersJob(fixture("smartrecruiters-servicenow-job.json"), "ServiceNow", "ServiceNow");
+        assertEquals("smartrecruiters:ServiceNow", s.board());
+        assertEquals("Sr Software Engineer", s.title());
+        assertEquals("Hyderabad, India", s.location());
+        assertTrue(s.url().startsWith("https://jobs.smartrecruiters.com/ServiceNow/"));
+        assertTrue(s.description().contains("Qualifications") && !s.description().contains("<"));
+        assertNotNull(s.postedAt());
+
+        List<JobDraft> a = JobSources.parseAshby(fixture("ashby-spotdraft.json"), "spotdraft", "SpotDraft");
+        assertEquals(3, a.size());
+        assertEquals("SpotDraft HQ, Bengaluru, India", a.getFirst().location());
+        assertTrue(MatchScorer.inMarket(a.getFirst().location(), a.getFirst().workplace()));
+        assertFalse(MatchScorer.inMarket(a.get(1).location(), a.get(1).workplace()), "US remote role: " + a.get(1).location());
+        assertTrue(a.getFirst().applyUrl().endsWith("/application"));
+        assertNotNull(a.getFirst().description());
+    }
+
+    @Test
     void leverFixture() throws Exception {
         List<JobDraft> jobs = JobSources.parseLever(fixture("lever-cred.json"), "cred", "CRED");
         assertEquals(3, jobs.size());

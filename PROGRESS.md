@@ -5,6 +5,12 @@
 - WAITING ON USER: checking the resume-based job list (4 jobs for the Java/Hyderabad account).
 - NEXT (offered, not confirmed): Workday careers-site reader (biggest supply gain), then SmartRecruiters/Ashby/Workable; async "Find jobs now" (>45s now); server-side profile lock; ask user about Hevo SDE II stale submittedAt; HackerRank SDET II needs 5 answers from user; delete unused Playwright /fill + BrowserFiller if extension holds up.
 
+## 2026-11-09: SmartRecruiters + Ashby readers (step 2 of 5)
+- `smartRecruitersBoard` (Posting API with country=in, then one GET per posting for the description) and `ashbyBoard` (one call, descriptions included). Shared `JobSources.eachJob` = 4-at-a-time detail reads (Workday uses it too). Listing only; apply on the posting.
+- catalog: SmartRecruiters ServiceNow (83 India, 44 Hyderabad), Experian, Freshworks, Bosch, Swiggy, NielsenIQ, AbbVie; Ashby Sarvam AI, SpotDraft, ElevenLabs, OpenAI, Atlan, Notion. Catalog now 69 sources.
+- Workable skipped: no Indian company found on it (all probed accounts empty). Add when one turns up.
+- Live: ServiceNow 83 jobs in 16s, Sarvam 47 in 0.4s.
+
 ## 2026-11-09: "Find jobs now" runs in the background
 - POST /api/discovery/run starts it (returns progress; a second press just reports the running one); GET /api/discovery/status = {running, done, total, results}. Progress is in memory per user (lost on restart). Jobs page polls every 2s, button shows "Reading X/56 companies…", list refreshes as each company finishes, resumes polling if you leave and come back, report card at the end. Live-checked: ~3 min for the full catalog (Citi is the slowest).
 - Order agreed with user, one by one: 1) background search DONE, 2) SmartRecruiters/Ashby/Workable readers, 3) missing Workday sites (Dell, Qualcomm, AMD, Walmart, Synopsys, BNY need real URLs), 4) Workday form filling in the extension, 5) housekeeping (server-side lock, Hevo SDE II, delete Playwright filler).
