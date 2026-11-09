@@ -5,5 +5,6 @@ import tailwindcss from '@tailwindcss/vite'
 // Dev: /api is proxied to Spring Boot, so the browser sees one origin (no CORS needed).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { proxy: { '/api': process.env.API_URL ?? 'http://localhost:8080' } },
+  // ../shared holds the API module shared with the mobile app.
+  server: { fs: { allow: ['..'] }, proxy: { '/api': process.env.API_URL ?? 'http://localhost:8080' } },
 })
