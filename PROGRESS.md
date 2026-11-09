@@ -1,6 +1,17 @@
 # JobPilot AI — Progress
 
-## RESUME HERE (latest, HEAD 3ede8d3, tree clean, 48 tests pass)
+## RESUME HERE (2026-11-10, HEAD ce539bd, 53 backend tests pass, web + mobile typecheck)
+- **Mobile app** `mobile/` (Expo SDK 57, Android, com.jobpilot.app, NOT a PWA): Inbox (agent's pending answers + auto mode), Jobs (+ clipboard/link import), job detail, tailor (view/regenerate/share PDF), Applications + answer screen, Profile (fields, resumes, fill from resume), Interview practice. Server address set on sign-in (PC LAN IP:8080, firewall rule in mobile agent notes below). Not device-tested.
+  - **APK NOT BUILT**: gradle assembleRelease was killed for low RAM at :expo:mergeReleaseResources. Run with nothing else open: `cd mobilendroid; .\gradlew.bat assembleRelease` -> copy appuild\outputspkeleasepp-release.apk to Downloads\jobpilot-1.0.0.apk, check with aapt2 dump badging. android/ is generated (gitignored); a fresh prebuild resets the arm-only abiFilters in gradle.properties.
+  - Phone-only gaps: experience/education read-only, tailor section picking/editing web-only, no swipe.
+  - Firewall: `New-NetFirewallRule -DisplayName "JobPilot 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private`.
+- **Sync rule**: every type/endpoint/profileGaps lives in `shared/api.ts` (`createApi`), imported by frontend/src/api.ts and mobile. New endpoint = add it there once, then a screen in both apps.
+- **Mock interview coach** (`interview/`, V7, /interview page + mobile screens): 6 questions in one call, one call per answer for rubric score + improvements + fact-checked improved answer; template questions / 503 AI_UNAVAILABLE fallbacks. NOT run against a live model yet.
+- **AI layer** (`apply/Ollama.java`, the only door): LLM_URL/LLM_API_KEY/LLM_MODEL = any OpenAI-compatible model first (Groq free tier recommended), Ollama fallback; caps 900/2000 tokens, JSON at temp 0, keep_alive 30m, token log per call. Prompts ordered rules -> candidate -> job -> task (cached prefix). Plan + model ladder in docs/PRODUCT.md "AI cost plan".
+- Playwright filler, /fill and APPLY_DRY_RUN removed (extension does the filling).
+- NEXT: build APK + device test; live-test the interview coach; optional Groq key for quality/speed; Workday sites Dell/Qualcomm/AMD/Walmart/Synopsys/BNY still need real site paths (guesses all 422).
+
+## (older) RESUME POINT (HEAD 3ede8d3, tree clean, 48 tests pass)
 - Start: `powershell -ExecutionPolicy Bypass -File start.ps1`. Extension 0.2.0 loaded in Chrome (reload after changes).
 - WAITING ON USER: checking the resume-based job list (4 jobs for the Java/Hyderabad account).
 - NEXT (offered, not confirmed): Workday careers-site reader (biggest supply gain), then SmartRecruiters/Ashby/Workable; async "Find jobs now" (>45s now); server-side profile lock; ask user about Hevo SDE II stale submittedAt; HackerRank SDET II needs 5 answers from user; delete unused Playwright /fill + BrowserFiller if extension holds up.
