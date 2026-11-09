@@ -125,8 +125,13 @@ public class JobController {
     }
 
     @PostMapping("/discovery/run")
-    public List<DiscoveryService.SourceResult> run(@AuthenticationPrincipal UUID userId) {
-        return discovery.run(userId);
+    public DiscoveryService.Progress run(@AuthenticationPrincipal UUID userId) {
+        return discovery.start(userId);
+    }
+
+    @GetMapping("/discovery/status")
+    public DiscoveryService.Progress discoveryStatus(@AuthenticationPrincipal UUID userId) {
+        return discovery.status(userId);
     }
 
     private JobDto added(UUID userId, JobDraft d) {

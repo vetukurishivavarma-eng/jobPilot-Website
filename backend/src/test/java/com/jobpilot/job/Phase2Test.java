@@ -247,8 +247,15 @@ class Phase2Test {
                         .content("{\"url\":\"http://169.254.169.254/latest/meta-data\"}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("FETCH_FAILED"));
 
-        // empty test catalog, no Adzuna key -> empty report
-        mvc().perform(post("/api/discovery/run").header("Authorization", auth)).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
+        // empty test catalog, no Adzuna key -> the background run finishes with an empty report
+        mvc().perform(post("/api/discovery/run").header("Authorization", auth)).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+        for (int i = 0; i < 50; i++) {
+            String st = mvc().perform(get("/api/discovery/status").header("Authorization", auth)).andReturn().getResponse().getContentAsString();
+            if (st.contains("\"running\":false")) break;
+            Thread.sleep(100);
+        }
+        mvc().perform(get("/api/discovery/status").header("Authorization", auth))
+                .andExpect(jsonPath("$.running").value(false)).andExpect(jsonPath("$.results", hasSize(0)));
     }
 
     @Test

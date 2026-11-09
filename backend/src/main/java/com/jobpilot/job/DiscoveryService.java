@@ -3,10 +3,8 @@ package com.jobpilot.job;
 import com.jobpilot.auth.UserRepository;
 import com.jobpilot.config.AppProperties;
 import com.jobpilot.profile.ProfileRepository;
-import com.jobpilot.shared.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +34,11 @@ public class DiscoveryService {
     private final JobStore store;
     private final AppProperties props;
     private final Set<UUID> running = ConcurrentHashMap.newKeySet();
+    /** The latest "Find jobs now" per user. ponytail: in memory, lost on restart (the 6h schedule still runs). */
+    private final Map<UUID, Progress> progress = new ConcurrentHashMap<>();
+
+    /** A run as the Jobs page polls it: sources done so far out of total, and their results. */
+    public record Progress(boolean running, int done, int total, List<SourceResult> results) {}
 
     DiscoveryService(ProfileRepository profiles, UserRepository users, JobStore store, AppProperties props) {
         this.profiles = profiles;
@@ -59,19 +62,40 @@ public class DiscoveryService {
         }
     }
 
-    /** "Find jobs now": the whole catalog for this user. */
-    public List<SourceResult> run(UUID userId) {
-        if (!running.add(userId))
-            throw new ApiException(HttpStatus.CONFLICT, "ALREADY_RUNNING", "A job search is already running for you. Try again in a minute.");
-        try {
-            return syncAll(List.of(userId));
-        } finally {
-            running.remove(userId);
-        }
+    /** "Find jobs now": starts the whole catalog for this user in the background; the page polls {@link #status}. */
+    public Progress start(UUID userId) {
+        if (!running.add(userId)) return status(userId); // already searching: just report it
+        List<SourceResult> results = Collections.synchronizedList(new ArrayList<>());
+        progress.put(userId, new Progress(true, 0, 0, List.of()));
+        Thread.startVirtualThread(() -> {
+            try {
+                syncAll(List.of(userId), (total, r) -> {
+                    synchronized (results) { // so a slower thread can't overwrite a newer count
+                        if (r != null) results.add(r);
+                        progress.put(userId, new Progress(true, results.size(), total, List.copyOf(results)));
+                    }
+                });
+            } catch (RuntimeException e) {
+                log.error("Discovery failed", e);
+            } finally {
+                Progress p = progress.get(userId);
+                progress.put(userId, new Progress(false, p.done(), p.total(), p.results()));
+                running.remove(userId);
+            }
+        });
+        return status(userId);
     }
 
-    /** Fetches each board once and adds its India/remote jobs to every given user's list. */
+    public Progress status(UUID userId) {
+        return progress.getOrDefault(userId, new Progress(false, 0, 0, List.of()));
+    }
+
     List<SourceResult> syncAll(List<UUID> userIds) {
+        return syncAll(userIds, (total, r) -> {});
+    }
+
+    /** Fetches each board once and adds its India/remote jobs to every given user's list; {@code onDone} hears each source finish. */
+    List<SourceResult> syncAll(List<UUID> userIds, java.util.function.BiConsumer<Integer, SourceResult> onDone) {
         List<Callable<SourceResult>> tasks = new ArrayList<>();
         for (Board b : CATALOG) tasks.add(() -> sync(b, userIds));
         if (props.adzunaEnabled())
@@ -81,9 +105,16 @@ public class DiscoveryService {
                     for (String loc : locs.isEmpty() ? Collections.<String>singletonList(null) : locs.stream().limit(MAX_SEARCH_LOCATIONS).toList())
                         tasks.add(() -> search(u, role, loc));
             }
+        int total = tasks.size();
+        onDone.accept(total, null);
         try (ExecutorService ex = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Callable<SourceResult>> reporting = tasks.stream().<Callable<SourceResult>>map(t -> () -> {
+                SourceResult r = t.call();
+                onDone.accept(total, r);
+                return r;
+            }).toList();
             List<SourceResult> out = new ArrayList<>();
-            for (Future<SourceResult> f : ex.invokeAll(tasks)) out.add(f.get()); // tasks report their own failures
+            for (Future<SourceResult> f : ex.invokeAll(reporting)) out.add(f.get()); // tasks report their own failures
             return out;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

@@ -5,6 +5,10 @@
 - WAITING ON USER: checking the resume-based job list (4 jobs for the Java/Hyderabad account).
 - NEXT (offered, not confirmed): Workday careers-site reader (biggest supply gain), then SmartRecruiters/Ashby/Workable; async "Find jobs now" (>45s now); server-side profile lock; ask user about Hevo SDE II stale submittedAt; HackerRank SDET II needs 5 answers from user; delete unused Playwright /fill + BrowserFiller if extension holds up.
 
+## 2026-11-09: "Find jobs now" runs in the background
+- POST /api/discovery/run starts it (returns progress; a second press just reports the running one); GET /api/discovery/status = {running, done, total, results}. Progress is in memory per user (lost on restart). Jobs page polls every 2s, button shows "Reading X/56 companies…", list refreshes as each company finishes, resumes polling if you leave and come back, report card at the end. Live-checked: ~3 min for the full catalog (Citi is the slowest).
+- Order agreed with user, one by one: 1) background search DONE, 2) SmartRecruiters/Ashby/Workable readers, 3) missing Workday sites (Dell, Qualcomm, AMD, Walmart, Synopsys, BNY need real URLs), 4) Workday form filling in the extension, 5) housekeeping (server-side lock, Hevo SDE II, delete Playwright filler).
+
 ## 2026-11-08 night: Workday careers-site reader
 - `JobSources.workdayBoard("tenant.wdN/site")`: POSTs the site's own `/wday/cxs/{tenant}/{site}/jobs` search, finds the India facet (`indiaFacet`: exact "India" country value, else all "..., India" location values), pages 20 at a time (cap 400), then GETs each job for the description (4 at a time). Listing only: Workday needs an account to apply, so the agent/extension doesn't apply there (Open the posting).
 - catalog.txt: 18 Workday sites with India openings verified (NVIDIA, Salesforce, Wells Fargo, Mastercard, Adobe, Intel, Micron, HP, Citi, Morgan Stanley, State Street, Workday, PayPal, Cadence, Fidelity, Thomson Reuters, Novartis, Pfizer). 422 = wrong site name (Dell, Qualcomm, AMD, Walmart, Synopsys, BNY need the real site path).

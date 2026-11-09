@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, ApiError, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult } from '../api'
+import { api, ApiError, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult, type DiscoveryProgress } from '../api'
 
 const TABS = [['ACTIVE', 'Inbox'], ['SAVED', 'Saved'], ['DISMISSED', 'Dismissed'], ['ALL', 'All']] as const
 const SOURCE: Record<Job['source'], string> = { greenhouse: 'Greenhouse', lever: 'Lever', workday: 'Workday', adzuna: 'Adzuna', web: 'Web', manual: 'Added by you' }
@@ -32,17 +32,33 @@ export default function JobsPage() {
   const [sort, setSort] = useState<'recent' | 'match'>('match')
   const [data, setData] = useState<JobPage | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [running, setRunning] = useState(false)
+  const [progress, setProgress] = useState<DiscoveryProgress | null>(null)
   const [report, setReport] = useState<SourceResult[] | null>(null)
+  const running = !!progress?.running
   const [adding, setAdding] = useState(false)
 
   const refresh = () => api.listJobs({ status, q: query, includeClosed, page, sort }).then(setData).catch(e => setError(msg(e)))
   useEffect(() => { refresh() }, [status, query, includeClosed, page, sort])
 
+  // a search keeps running on the server if you leave the page; pick it up again on return
+  useEffect(() => { api.discoveryStatus().then(p => { if (p.running) setProgress(p) }).catch(() => {}) }, [])
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(async () => {
+      try {
+        const p = await api.discoveryStatus()
+        if (p.done !== progress?.done) refresh() // new jobs show up as each company finishes
+        setProgress(p)
+        if (!p.running) setReport(p.results)
+      } catch (e) { setError(msg(e)); setProgress(null) }
+    }, 2000)
+    return () => clearInterval(t)
+  }, [running, progress?.done])
+
   async function find() {
-    setRunning(true)
     setError(null)
-    try { setReport(await api.runDiscovery()); setPage(0); await refresh() } catch (e) { setError(msg(e)) } finally { setRunning(false) }
+    setReport(null)
+    try { setProgress(await api.runDiscovery()); setPage(0) } catch (e) { setError(msg(e)) }
   }
 
   async function setJobStatus(j: Job, s: JobStatus) {
@@ -61,7 +77,7 @@ export default function JobsPage() {
           </p>
         </div>
         <button className="btn-ghost" onClick={() => setAdding(a => !a)}>{adding ? 'Close' : 'Add a job'}</button>
-        <button className="btn" onClick={find} disabled={running}>{running ? 'Searching…' : 'Find jobs now'}</button>
+        <button className="btn" onClick={find} disabled={running}>{running ? (progress!.total ? `Reading ${progress!.done}/${progress!.total} companies…` : 'Starting…') : 'Find jobs now'}</button>
       </div>
 
       {report && <Report report={report} onClose={() => setReport(null)} />}

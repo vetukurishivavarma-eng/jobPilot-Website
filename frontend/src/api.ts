@@ -36,6 +36,7 @@ export type Job = {
 }
 export type JobPage = { items: Job[]; total: number; page: number; size: number }
 export type SourceResult = { source: 'company' | 'adzuna'; label: string; fetched: number; linked: number; error: string | null }
+export type DiscoveryProgress = { running: boolean; done: number; total: number; results: SourceResult[] }
 export type Ats = 'GREENHOUSE' | 'LEVER'
 export type ManualJob = { title: string; company: string; location: string; url: string; description: string }
 
@@ -124,7 +125,8 @@ export const api = {
   setJobStatus: (id: string, status: JobStatus) => request<Job>('PATCH', `/jobs/${id}`, { status }),
   importJob: (url: string) => request<Job>('POST', '/jobs/import', { url }),
   addManualJob: (j: ManualJob) => request<Job>('POST', '/jobs/manual', j),
-  runDiscovery: () => request<SourceResult[]>('POST', '/discovery/run'),
+  runDiscovery: () => request<DiscoveryProgress>('POST', '/discovery/run'),
+  discoveryStatus: () => request<DiscoveryProgress>('GET', '/discovery/status'),
 
 
   listApplications: () => request<Application[]>('GET', '/applications'),
