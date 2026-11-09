@@ -114,6 +114,13 @@ export function createApi(cfg: ApiConfig) {
     return res.status === 204 ? (undefined as T) : res.json()
   }
 
+  async function file(path: string) {
+    const t = cfg.getToken()
+    const res = await fetch(`${cfg.baseUrl()}/api${path}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} })
+    if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_FAILED', 'Download failed')
+    return res
+  }
+
   return {
   register: (email: string, password: string, fullName: string) =>
     request<AuthResponse>('POST', '/auth/register', { email, password, fullName }),
@@ -162,12 +169,8 @@ export function createApi(cfg: ApiConfig) {
     request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}`, { answer }),
   deleteInterview: (id: string) => request<void>('DELETE', `/interview/sessions/${id}`),
     /** Authenticated GET for files (PDF, DOCX, screenshot); each client turns the Response into a download or image. */
-    file: async (path: string) => {
-      const t = cfg.getToken()
-      const res = await fetch(`${cfg.baseUrl()}/api${path}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} })
-      if (!res.ok) throw new ApiError(res.status, 'DOWNLOAD_FAILED', 'Download failed')
-      return res
-    },
+    file,
+    documentFile: (id: string, format: 'pdf' | 'docx' | 'txt') => file(`/documents/${id}/file?format=${format}`),
   }
 }
 
