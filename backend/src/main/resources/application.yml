@@ -42,6 +42,12 @@ jobpilot:
   # Local LLM used by the apply agent for open-ended questions ("Why do you want to join?"). Optional.
   ollama-url: ${OLLAMA_URL:http://localhost:11434}
   ollama-model: ${OLLAMA_MODEL:qwen2.5:3b-instruct}
+  # Optional cloud model, any OpenAI-compatible endpoint; used first, Ollama is the fallback. Free options:
+  #   Groq:   LLM_URL=https://api.groq.com/openai/v1  LLM_MODEL=llama-3.3-70b-versatile (or llama-3.1-8b-instant)
+  #   Gemini: LLM_URL=https://generativelanguage.googleapis.com/v1beta/openai  LLM_MODEL=gemini-2.5-flash
+  llm-url: ${LLM_URL:}
+  llm-api-key: ${LLM_API_KEY:}
+  llm-model: ${LLM_MODEL:}
   # Auto mode runs for users who switched it on (Spring cron; "-" disables).
   auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}
   # Test mode for the apply agent: forms are filled but nothing is ever sent to the employer.
