@@ -23,7 +23,7 @@ public final class Tailor {
                         String years, String currentTitle, List<String> skills, Set<String> resumeSkills,
                         List<Experience> experiences, List<Education> educations, String resumeText) {
         /** Everything the candidate has told us, as one text: the reference for fact-checking. */
-        String all() {
+        public String all() {
             StringBuilder b = new StringBuilder();
             for (String s : Arrays.asList(name, email, phone, linkedin, location, headline, summary, years, currentTitle, String.join(", ", skills), resumeText))
                 if (s != null) b.append(s).append('\n');
@@ -32,7 +32,7 @@ public final class Tailor {
             return b.toString();
         }
 
-        Set<String> allSkills() {
+        public Set<String> allSkills() {
             Set<String> s = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             s.addAll(skills);
             s.addAll(resumeSkills);

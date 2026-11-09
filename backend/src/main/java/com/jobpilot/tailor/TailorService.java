@@ -108,7 +108,7 @@ public class TailorService {
         return jobs.findById(jobId).orElseThrow(() -> ApiException.notFound("Job"));
     }
 
-    private Tailor.JobInfo jobInfo(UUID userId, UUID jobId) {
+    public Tailor.JobInfo jobInfo(UUID userId, UUID jobId) {
         return tx.execute(s -> {
             Job j = own(userId, jobId);
             return new Tailor.JobInfo(j.title(), j.company(), j.description(),
@@ -116,7 +116,7 @@ public class TailorService {
         });
     }
 
-    Tailor.Facts facts(UUID userId) {
+    public Tailor.Facts facts(UUID userId) {
         return tx.execute(s -> {
             User u = users.findById(userId).orElseThrow(() -> ApiException.notFound("User"));
             ProfileDto p = profiles.findById(userId).map(ProfileDto::of).orElseGet(ProfileDto::empty);

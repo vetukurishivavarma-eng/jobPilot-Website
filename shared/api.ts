@@ -72,6 +72,16 @@ export type CoverLetter = { text: string; source: 'AI' | 'TEMPLATE' | 'USER'; wa
 export type TailoredDoc = { id: string; kind: 'RESUME' | 'LETTER'; resume: TailoredResume | null; letter: CoverLetter | null; updatedAt: string }
 export type SectionPick = { useTailored: boolean; text?: string }
 
+export type InterviewFeedback = {
+  score: number | null; rubric: Partial<Record<'relevance' | 'specificity' | 'technical' | 'concision', number>>
+  improvements: string[]; improvedAnswer: string | null; warnings: string[]
+}
+export type InterviewItem = { type: 'BEHAVIOURAL' | 'TECHNICAL' | 'ROLE'; question: string; answer: string | null; feedback: InterviewFeedback | null }
+export type InterviewSession = {
+  id: string; jobId: string | null; title: string; source: 'AI' | 'TEMPLATE'; items: InterviewItem[]; createdAt: string; updatedAt: string
+}
+export type InterviewSummary = { id: string; jobId: string | null; title: string; answered: number; total: number; averageScore: number | null; createdAt: string }
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fields?: Record<string, string>) {
     super(message)
@@ -144,6 +154,13 @@ export function createApi(cfg: ApiConfig) {
   getAuto: () => request<AutoSettings>('GET', '/auto-apply'),
   saveAuto: (s: Pick<AutoSettings, 'enabled' | 'autoSubmit' | 'minScore' | 'dailyLimit'>) => request<AutoSettings>('PUT', '/auto-apply', s),
   runAuto: () => request<AutoSettings>('POST', '/auto-apply/run'),
+  listInterviews: () => request<InterviewSummary[]>('GET', '/interview/sessions'),
+  getInterview: (id: string) => request<InterviewSession>('GET', `/interview/sessions/${id}`),
+  /** Pass a jobId from the user's job list, or a role to practise for. */
+  startInterview: (s: { jobId: string } | { role: string }) => request<InterviewSession>('POST', '/interview/sessions', s),
+  answerInterview: (id: string, index: number, answer: string) =>
+    request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}`, { answer }),
+  deleteInterview: (id: string) => request<void>('DELETE', `/interview/sessions/${id}`),
     /** Authenticated GET for files (PDF, DOCX, screenshot); each client turns the Response into a download or image. */
     file: async (path: string) => {
       const t = cfg.getToken()
