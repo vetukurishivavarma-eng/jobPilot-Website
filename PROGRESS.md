@@ -2,7 +2,7 @@
 
 ## RESUME HERE (2026-11-10, HEAD ce539bd, 53 backend tests pass, web + mobile typecheck)
 - **Mobile app** `mobile/` (Expo SDK 57, Android, com.jobpilot.app, NOT a PWA): Inbox (agent's pending answers + auto mode), Jobs (+ clipboard/link import), job detail, tailor (view/regenerate/share PDF), Applications + answer screen, Profile (fields, resumes, fill from resume), Interview practice. Server address set on sign-in (PC LAN IP:8080, firewall rule in mobile agent notes below). Not device-tested.
-  - **APK NOT BUILT**: gradle assembleRelease was killed for low RAM at :expo:mergeReleaseResources. Run with nothing else open: `cd mobilendroid; .\gradlew.bat assembleRelease` -> copy appuild\outputspkeleasepp-release.apk to Downloads\jobpilot-1.0.0.apk, check with aapt2 dump badging. android/ is generated (gitignored); a fresh prebuild resets the arm-only abiFilters in gradle.properties.
+  - **APK NOT BUILT**: gradle assembleRelease was killed for low RAM at :expo:mergeReleaseResources. Run with nothing else open: `cd mobile\android; .\gradlew.bat assembleRelease` -> copy app\build\outputs\apk\release\app-release.apk to Downloads\jobpilot-1.0.0.apk, check with aapt2 dump badging. android/ is generated (gitignored); a fresh prebuild resets the arm-only abiFilters in gradle.properties.
   - Phone-only gaps: experience/education read-only, tailor section picking/editing web-only, no swipe.
   - Firewall: `New-NetFirewallRule -DisplayName "JobPilot 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private`.
 - **Sync rule**: every type/endpoint/profileGaps lives in `shared/api.ts` (`createApi`), imported by frontend/src/api.ts and mobile. New endpoint = add it there once, then a screen in both apps.
