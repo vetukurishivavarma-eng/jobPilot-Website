@@ -48,11 +48,17 @@ export type FormField = {
   options: string[]; value: string | null; source: 'PROFILE' | 'BANK' | 'AI' | 'USER' | 'LETTER' | null
 }
 export type ApplicationStatus = 'NEEDS_INPUT' | 'READY' | 'FILLING' | 'SUBMITTED' | 'FAILED'
+export type Stage = 'APPLIED' | 'SCREENING' | 'INTERVIEW' | 'OFFER' | 'REJECTED' | 'ACCEPTED' | 'WITHDRAWN'
+export const STAGES: Stage[] = ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED', 'ACCEPTED', 'WITHDRAWN']
+export const stageIsTerminal = (s: Stage) => s === 'REJECTED' || s === 'ACCEPTED' || s === 'WITHDRAWN'
+export type TimelineEntry = { stage: Stage; note: string | null; at: string }
 export type Application = {
   id: string; jobId: string; jobTitle: string | null; company: string | null; jobUrl: string | null; applyUrl: string | null
   status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null; hasScreenshot: boolean; auto: boolean
+  stage: Stage | null; followUpAt: string | null; timeline: TimelineEntry[]
   createdAt: string; updatedAt: string; submittedAt: string | null
 }
+export type FollowUpEmail = { subject: string; body: string; source: 'AI' | 'TEMPLATE' }
 
 export type AutoSummary = {
   at: string; considered: number; prepared: number; needYourAnswers: number; submitted: number; waitingForYou: number
@@ -155,6 +161,9 @@ export function createApi(cfg: ApiConfig) {
   createApplication: (jobId: string) => request<Application>('POST', '/applications', { jobId }),
   saveAnswers: (id: string, answers: Record<string, string>) => request<Application>('PUT', `/applications/${id}/answers`, { answers }),
   deleteApplication: (id: string) => request<void>('DELETE', `/applications/${id}`),
+  setApplicationStage: (id: string, stage: Stage, note?: string, followUpInDays?: number | null) =>
+    request<Application>('PATCH', `/applications/${id}/stage`, { stage, note, followUpInDays }),
+  followUpEmail: (id: string) => request<FollowUpEmail>('POST', `/applications/${id}/follow-up-email`),
   jobDocuments: (jobId: string) => request<{ resume: TailoredDoc | null; letter: TailoredDoc | null }>('GET', `/jobs/${jobId}/documents`),
   tailorResume: (jobId: string) => request<TailoredDoc>('POST', `/jobs/${jobId}/documents/resume`),
   writeLetter: (jobId: string) => request<TailoredDoc>('POST', `/jobs/${jobId}/documents/letter`),

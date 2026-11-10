@@ -21,6 +21,7 @@ import tools.jackson.core.type.TypeReference;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.function.Consumer;
@@ -134,6 +135,45 @@ public class ApplicationService {
     public void markSubmitted(UUID userId, UUID appId) {
         own(userId, appId);
         update(appId, x -> { x.status = Application.Status.SUBMITTED; x.submittedAt = Instant.now(); x.error = null; });
+    }
+
+    public record TimelineEntry(Application.Stage stage, String note, Instant at) {}
+    private static final TypeReference<List<TimelineEntry>> TIMELINE = new TypeReference<>() {};
+
+    static List<TimelineEntry> timeline(Application a) {
+        return a.timeline == null || a.timeline.isBlank() ? List.of() : FormReader.JSON.readValue(a.timeline, TIMELINE);
+    }
+
+    /**
+     * Records an outcome stage for a submitted application, appends it to the timeline, and sets the follow-up reminder:
+     * followUpInDays null = leave as is, &lt;= 0 = clear, &gt; 0 = remind that many days from now. A terminal stage
+     * (rejected/accepted/withdrawn) always clears any pending reminder.
+     */
+    public Application setStage(UUID userId, UUID id, Application.Stage stage, String note, Integer followUpInDays) {
+        Application a = own(userId, id);
+        if (a.status != Application.Status.SUBMITTED)
+            throw new ApiException(HttpStatus.CONFLICT, "NOT_SUBMITTED", "Track an outcome only after the application is submitted");
+        String trimmed = note == null ? null : (note.length() > 500 ? note.substring(0, 500) : note.strip());
+        return tx.execute(s -> {
+            Application x = apps.findById(id).orElseThrow();
+            List<TimelineEntry> t = new ArrayList<>(timeline(x));
+            t.add(new TimelineEntry(stage, trimmed == null || trimmed.isEmpty() ? null : trimmed, Instant.now()));
+            x.timeline = FormReader.JSON.writeValueAsString(t);
+            x.stage = stage;
+            if (stage.terminal()) x.followUpAt = null;
+            else if (followUpInDays != null) x.followUpAt = followUpInDays <= 0 ? null : Instant.now().plus(Duration.ofDays(Math.min(followUpInDays, 365)));
+            x.updatedAt = Instant.now();
+            return x;
+        });
+    }
+
+    /** A drafted follow-up email for a submitted application (AI when available, template otherwise). */
+    public FollowUpEmail.Email followUpEmail(UUID userId, UUID id) {
+        Application a = own(userId, id);
+        if (a.status != Application.Status.SUBMITTED)
+            throw new ApiException(HttpStatus.CONFLICT, "NOT_SUBMITTED", "A follow-up email is for an application you've already submitted");
+        long days = a.submittedAt == null ? 0 : Math.max(0, Duration.between(a.submittedAt, Instant.now()).toDays());
+        return FollowUpEmail.draft(tailor.facts(userId), tailor.jobInfo(userId, a.jobId), (int) days, ollama::generateJson);
     }
 
     /** A browser session can't outlive the backend: anything left "filling" by a restart goes back to ready. */

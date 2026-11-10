@@ -1,8 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api, ApiError, type Application, type ApplicationStatus, type AutoSettings, type FormField } from '../api'
+import { api, ApiError, STAGES, stageIsTerminal, type Application, type ApplicationStatus, type AutoSettings, type FormField, type Stage } from '../api'
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
+
+const STAGE: Record<Stage, [string, string]> = {
+  APPLIED: ['Applied', 'bg-paper text-muted'],
+  SCREENING: ['Screening', 'bg-blue-100 text-blue-800'],
+  INTERVIEW: ['Interview', 'bg-violet-100 text-violet-800'],
+  OFFER: ['Offer', 'bg-emerald-100 text-emerald-800'],
+  REJECTED: ['Rejected', 'bg-red-100 text-danger'],
+  ACCEPTED: ['Accepted', 'bg-emerald-600 text-white'],
+  WITHDRAWN: ['Withdrawn', 'bg-paper text-muted'],
+}
+const followUpDue = (a: Application) => !!a.followUpAt && new Date(a.followUpAt) <= new Date() && !!a.stage && !stageIsTerminal(a.stage)
+
+function StageBadge({ s }: { s: Stage }) {
+  return <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STAGE[s][1]}`}>{STAGE[s][0]}</span>
+}
 
 const STATUS: Record<ApplicationStatus, [string, string]> = {
   NEEDS_INPUT: ['Needs your answers', 'bg-amber-100 text-amber-800'],
@@ -38,6 +53,19 @@ export default function ApplicationsPage() {
         </p>
       </div>
       <AutoPanel onRunFinished={load} />
+      {items && items.some(followUpDue) && (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <h2 className="font-display text-sm font-bold text-amber-900">Time to follow up</h2>
+          <ul className="mt-1 space-y-0.5 text-sm">
+            {items.filter(followUpDue).map(a => (
+              <li key={a.id}>
+                <Link to={`/applications/${a.id}`} className="font-medium underline">{a.jobTitle}</Link>
+                <span className="text-muted"> — {a.company}, {a.stage && STAGE[a.stage][0].toLowerCase()} since {new Date(a.updatedAt).toLocaleDateString()}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</p>}
       {items === null ? <p className="text-muted">Loading…</p> : items.length === 0 ? (
         <div className="card text-center text-sm text-muted">
@@ -54,7 +82,8 @@ export default function ApplicationsPage() {
                 </div>
                 {a.auto && <span className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">auto</span>}
                 {a.missing > 0 && <span className="text-xs text-muted">{a.missing} to answer</span>}
-                <StatusBadge s={a.status} />
+                {followUpDue(a) && <span title="Follow-up due">⏰</span>}
+                {a.stage ? <StageBadge s={a.stage} /> : <StatusBadge s={a.status} />}
               </Link>
             </li>
           ))}
@@ -219,12 +248,7 @@ export function ApplicationPage() {
           {a.error && <p className="mt-3 rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900">{a.error}</p>}
         </section>
       )}
-      {a.status === 'SUBMITTED' && (
-        <section className="rounded-xl border border-signal bg-signal-soft p-5">
-          <h2 className="font-display text-lg font-bold text-signal">Applied ✓</h2>
-          <p className="text-sm">The site confirmed your application{a.submittedAt && ` on ${new Date(a.submittedAt).toLocaleString()}`}.</p>
-        </section>
-      )}
+      {a.status === 'SUBMITTED' && <Tracker a={a} onChange={setA} />}
       {a.status !== 'FILLING' && a.error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{a.error}</p>}
       {a.hasScreenshot && a.status !== 'FILLING' && (
         <div>
@@ -264,6 +288,99 @@ export function ApplicationPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function Tracker({ a, onChange }: { a: Application; onChange: (a: Application) => void }) {
+  const [note, setNote] = useState('')
+  const [days, setDays] = useState(7)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [email, setEmail] = useState<{ subject: string; body: string; source: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function setStage(stage: Stage) {
+    setBusy(true); setError(null)
+    try {
+      const followUp = stageIsTerminal(stage) ? 0 : days > 0 ? days : null
+      onChange(await api.setApplicationStage(a.id, stage, note.trim() || undefined, followUp))
+      setNote('')
+    } catch (e) { setError(msg(e)) } finally { setBusy(false) }
+  }
+  async function draft() {
+    setBusy(true); setError(null); setCopied(false)
+    try { setEmail(await api.followUpEmail(a.id)) } catch (e) { setError(msg(e)) } finally { setBusy(false) }
+  }
+
+  const applied = a.submittedAt && new Date(a.submittedAt).toLocaleDateString()
+  const terminal = a.stage && stageIsTerminal(a.stage)
+
+  return (
+    <section className="card space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-display text-lg font-bold text-signal">Applied ✓</h2>
+        {applied && <span className="text-sm text-muted">on {applied}</span>}
+        {a.stage && <StageBadge s={a.stage} />}
+      </div>
+
+      <div>
+        <p className="label mb-1">Where's it at?</p>
+        <div className="flex flex-wrap gap-2">
+          {STAGES.map(s => (
+            <button key={s} type="button" disabled={busy} onClick={() => setStage(s)}
+              className={`rounded-md border px-3 py-1.5 text-sm ${a.stage === s ? 'border-ink bg-ink text-paper' : 'border-line bg-white hover:border-ink'}`}>
+              {STAGE[s][0]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div>
+          <label className="label" htmlFor="stage-note">Note (optional)</label>
+          <input id="stage-note" className="field" value={note} maxLength={500} placeholder="e.g. recruiter call Friday 3pm"
+            onChange={e => setNote(e.target.value)} />
+        </div>
+        {!terminal && (
+          <label className="flex items-center gap-2 text-sm text-muted">
+            remind me in
+            <input type="number" min={0} max={365} className="field w-20" value={days} onChange={e => setDays(Number(e.target.value))} />
+            days
+          </label>
+        )}
+      </div>
+      {a.followUpAt && !terminal && (
+        <p className="text-xs text-muted">⏰ Reminder set for {new Date(a.followUpAt).toLocaleDateString()}
+          {new Date(a.followUpAt) <= new Date() && <span className="font-semibold text-amber-700"> — due now</span>}.</p>
+      )}
+
+      {a.timeline.length > 0 && (
+        <ol className="space-y-1 border-l-2 border-line pl-4 text-sm">
+          {a.timeline.map((t, i) => (
+            <li key={i} className="relative">
+              <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-signal" />
+              <b>{STAGE[t.stage][0]}</b> <span className="text-xs text-muted">{new Date(t.at).toLocaleDateString()}</span>
+              {t.note && <span className="text-muted"> — {t.note}</span>}
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
+        <button className="btn-ghost" onClick={draft} disabled={busy}>{busy ? 'Working…' : email ? 'Redraft follow-up email' : 'Draft follow-up email'}</button>
+        {error && <span className="text-sm text-danger">{error}</span>}
+      </div>
+      {email && (
+        <div className="space-y-2 rounded-lg bg-paper p-3">
+          <p className="text-sm"><b>Subject:</b> {email.subject} {email.source === 'TEMPLATE' && <span className="text-xs text-muted">(template — AI was unavailable)</span>}</p>
+          <textarea className="field min-h-40 text-sm" readOnly value={email.body} />
+          <div className="flex gap-3">
+            <button className="btn-ghost" onClick={() => { navigator.clipboard?.writeText(`Subject: ${email.subject}\n\n${email.body}`); setCopied(true) }}>{copied ? 'Copied' : 'Copy'}</button>
+            <a className="btn-ghost" href={`mailto:?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`}>Open in email app</a>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 

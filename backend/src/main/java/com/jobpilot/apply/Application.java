@@ -10,6 +10,12 @@ import java.util.UUID;
 public class Application {
     public enum Status { NEEDS_INPUT, READY, FILLING, SUBMITTED, FAILED }
 
+    /** Real-world outcome after the form is submitted. Terminal stages take no follow-up. */
+    public enum Stage {
+        APPLIED, SCREENING, INTERVIEW, OFFER, REJECTED, ACCEPTED, WITHDRAWN;
+        public boolean terminal() { return this == REJECTED || this == ACCEPTED || this == WITHDRAWN; }
+    }
+
     @Id
     UUID id = UUID.randomUUID();
     UUID userId;
@@ -23,6 +29,11 @@ public class Application {
     String screenshotKey;
     /** Prepared by auto mode (only these are submitted automatically). */
     boolean auto;
+    @Enumerated(EnumType.STRING)
+    Stage stage;
+    Instant followUpAt;
+    /** JSON array of {stage, note, at}: the outcome timeline. */
+    String timeline = "[]";
     Instant createdAt = Instant.now();
     Instant updatedAt = Instant.now();
     Instant submittedAt;

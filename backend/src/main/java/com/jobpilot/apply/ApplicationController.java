@@ -26,9 +26,11 @@ public class ApplicationController {
 
     public record ApplicationDto(UUID id, UUID jobId, String jobTitle, String company, String jobUrl, String applyUrl, Application.Status status,
                                  UUID resumeId, List<FormField> fields, int missing, String error, boolean hasScreenshot, boolean auto,
+                                 Application.Stage stage, Instant followUpAt, List<ApplicationService.TimelineEntry> timeline,
                                  Instant createdAt, Instant updatedAt, Instant submittedAt) {}
     public record CreateRequest(@NotNull UUID jobId) {}
     public record AnswersRequest(@NotNull Map<String, String> answers) {}
+    public record StageRequest(@NotNull Application.Stage stage, String note, Integer followUpInDays) {}
 
     private final ApplicationRepository apps;
     private final JobRepository jobs;
@@ -127,10 +129,24 @@ public class ApplicationController {
         apps.delete(a);
     }
 
+    /** Track a real-world outcome (interview, offer, rejected…) and optionally set a follow-up reminder. */
+    @PatchMapping("/{id}/stage")
+    public ApplicationDto stage(@AuthenticationPrincipal UUID userId, @PathVariable UUID id, @Valid @RequestBody StageRequest req) {
+        Application a = service.setStage(userId, id, req.stage(), req.note(), req.followUpInDays());
+        return dto(a, jobs.findById(a.jobId).orElse(null));
+    }
+
+    /** Draft a polite follow-up email for a submitted application (AI when available, template otherwise). */
+    @PostMapping("/{id}/follow-up-email")
+    public FollowUpEmail.Email followUpEmail(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
+        return service.followUpEmail(userId, id);
+    }
+
     private ApplicationDto dto(Application a, Job j) {
         List<FormField> f = ApplicationService.fields(a);
         return new ApplicationDto(a.id, a.jobId, j == null ? null : j.title(), j == null ? null : j.company(), j == null ? null : j.url(), j == null || j.board() == null ? null : ApplicationService.applyUrl(j),
                 a.status, a.resumeId, f, (int) f.stream().filter(FormField::missing).count(), a.error, a.screenshotKey != null, a.auto,
+                a.stage, a.followUpAt, ApplicationService.timeline(a),
                 a.createdAt, a.updatedAt, a.submittedAt);
     }
 
