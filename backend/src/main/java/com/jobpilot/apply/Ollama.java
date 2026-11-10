@@ -17,9 +17,10 @@ import java.time.Duration;
  * The one door to the LLM. Every caller (answers, tailoring, resume import, interview coach) goes through
  * generate / generateJson, so cost controls live here only.
  * <ul>
- *   <li>LLM_API_KEY set: any OpenAI-compatible chat endpoint (Groq, Gemini, OpenRouter, a paid model later),
- *       falling back to local Ollama if it fails or rate-limits (free tiers do).</li>
- *   <li>Otherwise local Ollama (free).</li>
+ *   <li>Cloud chain (AppProperties.llms(): LLM_* then LLM2_*, each a comma list of models): any OpenAI-compatible
+ *       endpoint (Groq, Gemini, OpenRouter, a paid model later). On a failure or rate limit (free tiers do) the next
+ *       one is tried, so several free daily quotas stack.</li>
+ *   <li>Last: local Ollama (free; absent on a hosted server, where it just fails fast).</li>
  * </ul>
  * Output is capped per call, JSON calls run at temperature 0, and every call logs tokens + time so the bill is visible.
  * Returns null when no model answers; callers already handle that.
@@ -45,22 +46,32 @@ public class Ollama {
     }
 
     private String call(String prompt, boolean json) {
-        if (props.cloudLlmEnabled()) {
-            String r = cloud(prompt, json);
-            if (r != null) return r;
+        // ponytail: an exhausted model is re-tried on every call (~100 ms per 429); add a cooldown if that latency shows
+        for (AppProperties.Llm llm : props.llms()) {
+            String r = cloud(llm, prompt, json);
+            if (r != null && !r.isEmpty()) return r;
         }
         return ollama(prompt, json);
     }
 
-    private String cloud(String prompt, boolean json) {
-        ObjectNode body = FormReader.JSON.createObjectNode().put("model", props.llmModel())
+    private String cloud(AppProperties.Llm llm, String prompt, boolean json) {
+        ObjectNode body = FormReader.JSON.createObjectNode().put("model", llm.model())
                 .put("temperature", json ? 0 : 0.3).put("max_tokens", json ? MAX_JSON_TOKENS : MAX_TEXT_TOKENS);
+        // gpt-oss and Gemini think by default and spend max_tokens on it (a cover letter came back cut off or
+        // empty); "low" fixes them, and neither accepts "none". Qwen answers directly unless asked, where "low"
+        // turns thinking ON (131 -> 575 tokens). Measured on Groq/Gemini 2026-11-10.
+        if (!llm.model().contains("qwen")) body.put("reasoning_effort", "low");
         body.putArray("messages").addObject().put("role", "user").put("content", prompt);
         if (json) body.putObject("response_format").put("type", "json_object");
-        JsonNode res = post(props.llmUrl() + "/chat/completions", body, props.llmApiKey());
+        JsonNode res = post(llm.url() + "/chat/completions", body, llm.key(), 60); // an overloaded Gemini hung 150 s
         if (res == null) return null;
         JsonNode u = res.path("usage");
-        log.info("LLM {} in={} out={} tokens", props.llmModel(), u.path("prompt_tokens").asInt(), u.path("completion_tokens").asInt());
+        if ("length".equals(res.path("choices").path(0).path("finish_reason").asString(""))) {
+            // a cut-off letter or half a JSON object is worse than asking the next model
+            log.warn("LLM {} hit max_tokens (in={} out={}), trying next", llm.model(), u.path("prompt_tokens").asInt(), u.path("completion_tokens").asInt());
+            return null;
+        }
+        log.info("LLM {} in={} out={} tokens", llm.model(), u.path("prompt_tokens").asInt(), u.path("completion_tokens").asInt());
         return res.path("choices").path(0).path("message").path("content").asString("").strip();
     }
 
@@ -70,16 +81,16 @@ public class Ollama {
                 .put("keep_alive", "30m"); // a cold load costs ~35s on this CPU; keep the model in RAM between calls
         if (json) body.put("format", "json");
         body.putObject("options").put("temperature", json ? 0 : 0.3).put("num_predict", json ? MAX_JSON_TOKENS : MAX_TEXT_TOKENS);
-        JsonNode res = post(props.ollamaUrl() + "/api/generate", body, null);
+        JsonNode res = post(props.ollamaUrl() + "/api/generate", body, null, 300);
         if (res == null) return null;
         log.info("LLM ollama/{} in={} out={} tokens, {} ms", props.ollamaModel(), res.path("prompt_eval_count").asInt(),
                 res.path("eval_count").asInt(), res.path("total_duration").asLong() / 1_000_000);
         return res.path("response").asString("").strip();
     }
 
-    private static JsonNode post(String url, ObjectNode body, String key) {
+    private static JsonNode post(String url, ObjectNode body, String key, int timeoutSec) {
         try {
-            HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(300))
+            HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(timeoutSec))
                     .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body.toString()));
             if (key != null) req.header("Authorization", "Bearer " + key);
             HttpResponse<String> res = CLIENT.send(req.build(), HttpResponse.BodyHandlers.ofString());

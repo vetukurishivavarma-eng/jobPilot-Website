@@ -44,6 +44,6 @@ Every LLM call goes through one class (`apply/Ollama.java`), so model choice and
 | Stage | Model | Cost |
 |---|---|---|
 | Now | Ollama `qwen2.5:3b-instruct` (local CPU) | $0, slow (~10–60 s/call) |
-| Free cloud, recommended next | Groq `llama-3.3-70b-versatile` (`LLM_URL=https://api.groq.com/openai/v1`); its free tier is rate-limited, and Ollama takes over automatically on 429 | $0, ~1 s/call, much better writing |
-| Free alternative | Gemini `gemini-2.5-flash` via its OpenAI-compatible endpoint | $0, but free-tier prompts may be used for training, so avoid it with real users' resumes |
+| Free cloud, live 2026-11-10 | Chain: Groq `qwen/qwen3.8-27b` → `openai/gpt-oss-120b` → `openai/gpt-oss-20b` (LLM_*), then Gemini `gemini-3.5-flash-lite` → `gemini-3.8-flash` (LLM2_*), then Ollama. Each model has its own free quota (Groq qwen: 1,000 req/day, 8K tokens/min); a 429, error or cut-off reply moves to the next. Llama and Gemini 2.5 are gone for new keys. `reasoning_effort: low` is sent always, else thinking eats max_tokens | $0, ~0.5–2 s/call |
+| Free-tier caveat | Gemini free-tier prompts may be used for training, so it sits last; drop LLM2_* (or pay) before real users' resumes go through it | |
 | Paid, when hosted | A small fast model (Claude Haiku class or similar) on the same OpenAI-compatible path; route only cover letters to a bigger model if quality demands it | roughly ₹0.1–0.5 per application at the token counts above |

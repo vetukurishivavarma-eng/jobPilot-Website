@@ -42,11 +42,15 @@ jobpilot:
   # Local LLM used by the apply agent for open-ended questions ("Why do you want to join?"). Optional.
   ollama-url: ${OLLAMA_URL:http://localhost:11434}
   ollama-model: ${OLLAMA_MODEL:qwen2.5:3b-instruct}
-  # Optional cloud model, any OpenAI-compatible endpoint; used first, Ollama is the fallback. Free options:
-  #   Groq:   LLM_URL=https://api.groq.com/openai/v1  LLM_MODEL=llama-3.3-70b-versatile (or llama-3.1-8b-instant)
-  #   Gemini: LLM_URL=https://generativelanguage.googleapis.com/v1beta/openai  LLM_MODEL=gemini-2.5-flash
+  # Optional cloud models, any OpenAI-compatible endpoint, tried in order: every LLM_MODEL, then every LLM2_MODEL,
+  # then Ollama. MODEL may be a comma list; on a failure/429 the next is tried, so free daily quotas stack. Free setup:
+  #   LLM_URL=https://api.groq.com/openai/v1  LLM_MODEL=qwen/qwen3.8-27b,openai/gpt-oss-120b,openai/gpt-oss-20b
+  #   LLM2_URL=https://generativelanguage.googleapis.com/v1beta/openai  LLM2_MODEL=gemini-3.5-flash-lite,gemini-3.8-flash
   llm-url: ${LLM_URL:}
   llm-api-key: ${LLM_API_KEY:}
   llm-model: ${LLM_MODEL:}
+  llm2-url: ${LLM2_URL:}
+  llm2-api-key: ${LLM2_API_KEY:}
+  llm2-model: ${LLM2_MODEL:}
   # Auto mode runs for users who switched it on (Spring cron; "-" disables).
   auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}
