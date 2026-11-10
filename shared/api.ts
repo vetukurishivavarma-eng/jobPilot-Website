@@ -126,6 +126,8 @@ export function createApi(cfg: ApiConfig) {
     request<AuthResponse>('POST', '/auth/register', { email, password, fullName }),
   login: (email: string, password: string) => request<AuthResponse>('POST', '/auth/login', { email, password }),
   me: () => request<User>('GET', '/auth/me'),
+  /** Emails a 30-minute reset link; same answer whether or not the account exists. */
+  forgotPassword: (email: string) => request<{ message: string }>('POST', '/auth/forgot', { email }),
 
   getProfile: () => request<Profile>('GET', '/profile'),
   saveProfile: (p: Profile) => request<Profile>('PUT', '/profile', p),

@@ -11,6 +11,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [fullName, setFullName] = useState('')
   const [error, setError] = useState<ApiError | null>(null)
   const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
   const isRegister = mode === 'register'
 
   async function submit(e: FormEvent) {
@@ -26,6 +27,17 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       setError(err instanceof ApiError ? err : new ApiError(0, 'NETWORK', 'Cannot reach the server'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function forgot() {
+    setError(null)
+    setNotice('')
+    if (!email.trim()) return setError(new ApiError(0, 'EMAIL', 'Type your email above first, then tap "Forgot password?" again.'))
+    try {
+      setNotice((await api.forgotPassword(email.trim())).message)
+    } catch (err) {
+      setError(err instanceof ApiError ? err : new ApiError(0, 'NETWORK', 'Cannot reach the server'))
     }
   }
 
@@ -61,8 +73,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <input id="password" type="password" className="field" required minLength={isRegister ? 8 : undefined} maxLength={72}
               value={password} onChange={e => setPassword(e.target.value)} autoComplete={isRegister ? 'new-password' : 'current-password'} />
             {isRegister && <p className="mt-1 text-xs text-muted">At least 8 characters.</p>}
+            {!isRegister && <button type="button" onClick={forgot} className="mt-1 text-xs font-semibold text-ink underline">Forgot password?</button>}
             {error?.fields?.password && <p className="mt-1 text-xs text-danger">{error.fields.password}</p>}
           </div>
+          {notice && <p role="status" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
           {error && !error.fields && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error.message}</p>}
           <button className="btn w-full" disabled={busy}>{busy ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'}</button>
           <p className="text-center text-sm text-muted">

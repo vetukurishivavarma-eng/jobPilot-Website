@@ -52,5 +52,9 @@ jobpilot:
   llm2-url: ${LLM2_URL:}
   llm2-api-key: ${LLM2_API_KEY:}
   llm2-model: ${LLM2_MODEL:}
+  # Forgot-password emails via Brevo's HTTP API (free 300/day, https://app.brevo.com -> SMTP & API -> API keys).
+  # MAIL_FROM must be a sender verified in Brevo (a plain Gmail works). Unset: the reset link is only logged.
+  brevo-api-key: ${BREVO_API_KEY:}
+  mail-from: ${MAIL_FROM:}
   # Auto mode runs for users who switched it on (Spring cron; "-" disables).
   auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}
