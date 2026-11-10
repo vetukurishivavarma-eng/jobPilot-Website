@@ -23,4 +23,8 @@ public interface UserJobRepository extends JpaRepository<UserJob, UUID> {
 
     @Query("select uj.job.id from UserJob uj where uj.userId = :u and uj.job.id in :ids")
     Set<UUID> linkedAmong(UUID u, Collection<UUID> ids);
+
+    /** The user's still-open jobs (skills loaded lazily via @BatchSize; call inside a transaction). */
+    @Query("select uj.job from UserJob uj join uj.job j where uj.userId = :u and j.closedAt is null")
+    java.util.List<Job> openJobsOf(UUID u);
 }

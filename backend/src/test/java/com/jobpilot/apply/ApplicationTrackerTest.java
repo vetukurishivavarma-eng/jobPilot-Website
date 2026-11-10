@@ -71,6 +71,25 @@ class ApplicationTrackerTest {
     }
 
     @Test
+    void funnelCountsRepliesStagesAndReplyRate() {
+        UUID uid = newUser();
+        Application a1 = app(uid, newJob(uid, "Dev"), Application.Status.SUBMITTED);
+        Application a2 = app(uid, newJob(uid, "Dev"), Application.Status.SUBMITTED);
+        app(uid, newJob(uid, "Dev"), Application.Status.SUBMITTED); // stays APPLIED (no response)
+
+        service.setStage(uid, a1.id, Application.Stage.INTERVIEW, null, null);
+        service.setStage(uid, a2.id, Application.Stage.REJECTED, null, null);
+
+        ApplicationService.Funnel f = service.funnel(uid);
+        assertEquals(3, f.submitted());
+        assertEquals(1, f.interview());
+        assertEquals(1, f.rejected());
+        assertEquals(1, f.applied());
+        assertEquals(67, f.replyRatePct()); // 2 of 3 got a response
+        assertNotNull(f.avgDaysToReply());
+    }
+
+    @Test
     void followUpEmailFallsBackToTemplate() {
         UUID uid = newUser(); // AI points at a dead port in tests, so this is the template path
         Application a = app(uid, newJob(uid, "Backend Dev"), Application.Status.SUBMITTED);

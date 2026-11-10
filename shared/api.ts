@@ -59,6 +59,13 @@ export type Application = {
   createdAt: string; updatedAt: string; submittedAt: string | null
 }
 export type FollowUpEmail = { subject: string; body: string; source: 'AI' | 'TEMPLATE' }
+export type Funnel = {
+  total: number; submitted: number; submittedThisWeek: number
+  applied: number; screening: number; interview: number; offer: number; rejected: number; accepted: number; withdrawn: number
+  replyRatePct: number | null; avgDaysToReply: number | null
+}
+export type SkillGap = { skill: string; jobs: number }
+export type Insights = { funnel: Funnel; jobsConsidered: number; skillGaps: SkillGap[] }
 
 export type AutoSummary = {
   at: string; considered: number; prepared: number; needYourAnswers: number; submitted: number; waitingForYou: number
@@ -164,6 +171,7 @@ export function createApi(cfg: ApiConfig) {
   setApplicationStage: (id: string, stage: Stage, note?: string, followUpInDays?: number | null) =>
     request<Application>('PATCH', `/applications/${id}/stage`, { stage, note, followUpInDays }),
   followUpEmail: (id: string) => request<FollowUpEmail>('POST', `/applications/${id}/follow-up-email`),
+  insights: () => request<Insights>('GET', '/insights'),
   jobDocuments: (jobId: string) => request<{ resume: TailoredDoc | null; letter: TailoredDoc | null }>('GET', `/jobs/${jobId}/documents`),
   tailorResume: (jobId: string) => request<TailoredDoc>('POST', `/jobs/${jobId}/documents/resume`),
   writeLetter: (jobId: string) => request<TailoredDoc>('POST', `/jobs/${jobId}/documents/letter`),

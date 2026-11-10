@@ -7,7 +7,12 @@ import com.jobpilot.resume.ResumeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -16,12 +21,47 @@ import java.util.UUID;
 public class MatchService {
     private final ProfileRepository profiles;
     private final ResumeRepository resumes;
+    private final UserJobRepository userJobs;
     private final TransactionTemplate tx;
 
-    MatchService(ProfileRepository profiles, ResumeRepository resumes, TransactionTemplate tx) {
+    MatchService(ProfileRepository profiles, ResumeRepository resumes, UserJobRepository userJobs, TransactionTemplate tx) {
         this.profiles = profiles;
         this.resumes = resumes;
+        this.userJobs = userJobs;
         this.tx = tx;
+    }
+
+    /** A skill the user's jobs ask for that isn't on their profile, and how many of those jobs want it. */
+    public record SkillGap(String skill, int jobs) {}
+    public record GapReport(int jobsConsidered, List<SkillGap> gaps) {}
+
+    /**
+     * The skills most asked for across the user's still-open jobs that they don't list: what to learn next to match
+     * the roles they're actually seeing. A skill is counted once per job.
+     */
+    public GapReport skillGaps(UUID userId, int limit) {
+        Set<String> mine = new HashSet<>();
+        candidate(userId).skills().forEach(sk -> mine.add(sk.toLowerCase(Locale.ROOT)));
+        return tx.execute(s -> {
+            List<Job> jobs = userJobs.openJobsOf(userId);
+            Map<String, Integer> count = new HashMap<>();
+            Map<String, String> display = new HashMap<>();
+            for (Job j : jobs) {
+                Set<String> seen = new HashSet<>();
+                for (String sk : j.skills) {
+                    String key = sk.toLowerCase(Locale.ROOT);
+                    if (mine.contains(key) || !seen.add(key)) continue;
+                    count.merge(key, 1, Integer::sum);
+                    display.putIfAbsent(key, sk);
+                }
+            }
+            List<SkillGap> gaps = count.entrySet().stream()
+                    .sorted((a, b) -> b.getValue() - a.getValue())
+                    .limit(limit)
+                    .map(e -> new SkillGap(display.get(e.getKey()), e.getValue()))
+                    .toList();
+            return new GapReport(jobs.size(), gaps);
+        });
     }
 
     public MatchScorer.Candidate candidate(UUID userId) {

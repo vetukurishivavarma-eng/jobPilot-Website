@@ -11,6 +11,7 @@ import JobsPage from './pages/JobsPage'
 import TailorPage from './pages/TailorPage'
 import ApplicationsPage, { ApplicationPage } from './pages/ApplicationsPage'
 import InterviewPage, { InterviewSessionPage } from './pages/InterviewPage'
+import InsightsPage from './pages/InsightsPage'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -36,6 +37,7 @@ function App() {
               <Route path="/applications/:id" element={<ApplicationPage />} />
               <Route path="/interview" element={<InterviewPage />} />
               <Route path="/interview/:id" element={<InterviewSessionPage />} />
+              <Route path="/insights" element={<InsightsPage />} />
             </Route>
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/resumes" element={<ResumesPage />} />
@@ -83,6 +85,7 @@ function Shell() {
             {locked ? lockedLink('Jobs') : <NavLink to="/jobs" className={link}>Jobs</NavLink>}
             {locked ? lockedLink('Applications') : <NavLink to="/applications" className={link}>Applications</NavLink>}
             {locked ? lockedLink('Interview') : <NavLink to="/interview" className={link}>Interview</NavLink>}
+            {locked ? lockedLink('Insights') : <NavLink to="/insights" className={link}>Insights</NavLink>}
             <NavLink to="/profile" className={link}>Profile</NavLink>
             <NavLink to="/resumes" className={link}>Resumes</NavLink>
           </nav>

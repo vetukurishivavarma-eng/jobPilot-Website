@@ -176,6 +176,48 @@ public class ApplicationService {
         return FollowUpEmail.draft(tailor.facts(userId), tailor.jobInfo(userId, a.jobId), (int) days, ollama::generateJson);
     }
 
+    /** The job-search funnel for the Insights view. */
+    public record Funnel(int total, int submitted, int submittedThisWeek,
+                         int applied, int screening, int interview, int offer, int rejected, int accepted, int withdrawn,
+                         Integer replyRatePct, Integer avgDaysToReply) {}
+
+    private static boolean isResponse(Application.Stage s) {
+        return s == Application.Stage.SCREENING || s == Application.Stage.INTERVIEW || s == Application.Stage.OFFER
+                || s == Application.Stage.REJECTED || s == Application.Stage.ACCEPTED;
+    }
+
+    public Funnel funnel(UUID userId) {
+        List<Application> list = apps.findByUserIdOrderByUpdatedAtDesc(userId);
+        List<Application> submitted = list.stream().filter(a -> a.status == Application.Status.SUBMITTED).toList();
+        Instant weekAgo = Instant.now().minus(Duration.ofDays(7));
+        int thisWeek = (int) submitted.stream().filter(a -> a.submittedAt != null && a.submittedAt.isAfter(weekAgo)).count();
+        int[] c = new int[Application.Stage.values().length];
+        int responded = 0, repliedWithDate = 0;
+        long totalDays = 0;
+        for (Application a : submitted) {
+            Application.Stage st = a.stage == null ? Application.Stage.APPLIED : a.stage;
+            c[st.ordinal()]++;
+            if (isResponse(st)) {
+                responded++;
+                Long d = daysToFirstResponse(a);
+                if (d != null) { totalDays += d; repliedWithDate++; }
+            }
+        }
+        Integer replyRate = submitted.isEmpty() ? null : (int) Math.round(responded * 100.0 / submitted.size());
+        Integer avgDays = repliedWithDate == 0 ? null : (int) Math.round((double) totalDays / repliedWithDate);
+        return new Funnel(list.size(), submitted.size(), thisWeek,
+                c[Application.Stage.APPLIED.ordinal()], c[Application.Stage.SCREENING.ordinal()], c[Application.Stage.INTERVIEW.ordinal()],
+                c[Application.Stage.OFFER.ordinal()], c[Application.Stage.REJECTED.ordinal()], c[Application.Stage.ACCEPTED.ordinal()],
+                c[Application.Stage.WITHDRAWN.ordinal()], replyRate, avgDays);
+    }
+
+    /** Days from submission to the first timeline entry that is a real response, or null if unknown. */
+    private static Long daysToFirstResponse(Application a) {
+        if (a.submittedAt == null) return null;
+        return timeline(a).stream().filter(t -> isResponse(t.stage())).map(TimelineEntry::at).min(Instant::compareTo)
+                .map(at -> Math.max(0, Duration.between(a.submittedAt, at).toDays())).orElse(null);
+    }
+
     /** A browser session can't outlive the backend: anything left "filling" by a restart goes back to ready. */
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     void releaseInterruptedSessions() {
