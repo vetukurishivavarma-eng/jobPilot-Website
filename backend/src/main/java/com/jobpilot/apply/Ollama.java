@@ -72,7 +72,10 @@ public class Ollama {
 
     private String call(String prompt, boolean json, int maxTokens, double temperature, String preferModel) {
         List<AppProperties.Llm> chain = new ArrayList<>(props.llms());
-        if (!preferModel.isEmpty()) chain.sort(Comparator.comparing((AppProperties.Llm l) -> !l.model().equals(preferModel))); // stable: preferred first
+        if (!preferModel.isEmpty()) {
+            chain.sort(Comparator.comparing((AppProperties.Llm l) -> !l.model().equals(preferModel))); // stable: preferred first
+            log.info("LLM chain for '{}': {}", preferModel, chain.stream().map(AppProperties.Llm::model).toList());
+        }
         // ponytail: an exhausted model is re-tried on every call (~100 ms per 429); add a cooldown if that latency shows
         for (AppProperties.Llm llm : chain) {
             String r = cloud(llm, prompt, json, maxTokens, temperature);
@@ -98,8 +101,9 @@ public class Ollama {
             log.warn("LLM {} hit max_tokens (in={} out={}), trying next", llm.model(), u.path("prompt_tokens").asInt(), u.path("completion_tokens").asInt());
             return null;
         }
-        log.info("LLM {} in={} out={} tokens", llm.model(), u.path("prompt_tokens").asInt(), u.path("completion_tokens").asInt());
-        return res.path("choices").path(0).path("message").path("content").asString("").strip();
+        String content = res.path("choices").path(0).path("message").path("content").asString("").strip();
+        log.info("LLM {} in={} out={} tokens, {} chars", llm.model(), u.path("prompt_tokens").asInt(), u.path("completion_tokens").asInt(), content.length());
+        return content;
     }
 
     private String ollama(String prompt, boolean json, int maxTokens, double temperature) {
