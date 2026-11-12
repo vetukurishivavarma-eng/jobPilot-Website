@@ -1,5 +1,11 @@
 # JobPilot AI — Progress
 
+## RESUME HERE (2026-11-12 night, 71 backend tests pass, ALL PUSHED, 1.2.1 RELEASED)
+- **Website now HOSTED** at https://jobpilot-api-gpa6.onrender.com (same origin as the API): `npm run build:backend` in frontend/ builds into backend/src/main/resources/static (COMMITTED build output: rebuild + commit whenever frontend changes, else the live site is stale). `config/SpaController` forwards client routes to index.html (keep in sync with main.tsx routes); security = /api/** + /actuator/** authenticated, everything else public static. Live-checked: /, /jobs -> sign-in page renders, /api/jobs 401.
+- **Daily email digest** (`digest/DigestController`, 09:00 IST, DIGEST_CRON, PUBLIC_URL default = Render URL): relevant jobs since users.digest_sent_at (max 8, best first) + follow-ups due; nothing new = no mail. Signed one-click /unsubscribe -> users.email_digest=false (V10). Brevo via new `shared/Mailer` (password reset uses it too). NOT yet seen in a real inbox (first run = next 09:00 IST; check Render logs "Digest: N emails sent"). No re-subscribe UI.
+- **Mobile 1.2.1 / vc8 RELEASED** (github v1.2.1): live-interview "Turn on camera" = WebView of backend /eye.html (MediaPipe on-device, posts away/back; ~13 MB first download). CAMERA perm added, SYSTEM_ALERT_WINDOW blocked (verified via aapt). react-native-webview 13.16.1. NOT device-tested.
+- NEXT: device test 1.2.1 (camera WebView permission flow is the riskiest bit), Profile/Jobs styling (waiting on user), Workday sites.
+
 ## RESUME HERE (2026-11-12 evening, 68 backend tests pass, web+mobile typecheck, ALL PUSHED)
 - **1.1.4 RELEASED** (github jobPilot-apk v1.1.4, versionCode 6): recruiter outreach UI (web tailor tab "Message recruiter", mobile job screen card) + backend persistence V9 + outreach endpoint all deployed via website push.
 - **1.2.0 (`9f14dd6`, pushed both repos)** — user's vision: resume in -> mock interview for that company -> report on gaps vs market -> best-suited jobs.
