@@ -66,7 +66,7 @@ public final class Interview {
         StringBuilder t = new StringBuilder();
         for (Item i : done) t.append("Q: ").append(i.question()).append("\nA: ").append(cut(i.answer(), 1200)).append('\n');
         String ask = last ? "" : """
-                next_question: ONE question, as a real interviewer would ask next. Dig into the projects, tools and decisions the candidate actually mentioned (why that design, what broke, trade-offs, how it scaled, what they would change) and test the skills the job needs. If an answer was vague, press for specifics. Include one behavioural question somewhere in the interview. Never repeat a question. One or two sentences, no answer.
+                next_question: ONE question, as a real interviewer would ask next. Dig into the projects, tools and decisions the candidate actually mentioned (why that design, what broke, trade-offs, how it scaled, what they would change) and test the skills the job needs. If an answer was vague, press for specifics once, then move on. Never ask more than 2 questions in a row on the same topic: after that switch to another project, another skill the job needs, or a behavioural question. Include at least one behavioural question in the interview. Never repeat or rephrase an earlier question. One or two sentences, no answer.
                 """;
         return """
                 You are an interviewer running a realistic interview for the role below. Interview the way this company's interviewers typically do for this role and level, from what is publicly known about their process; if you don't know the company, run a standard interview for this level. Never claim to have seen real interview reports.
