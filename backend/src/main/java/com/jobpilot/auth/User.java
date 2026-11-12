@@ -14,6 +14,8 @@ public class User {
     private String passwordHash;
     private String fullName;
     private Instant createdAt = Instant.now();
+    private boolean emailDigest = true;
+    private Instant digestSentAt;
 
     protected User() {}
 
@@ -29,4 +31,8 @@ public class User {
     public String getFullName() { return fullName; }
     public Instant getCreatedAt() { return createdAt; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+    public boolean isEmailDigest() { return emailDigest; }
+    public void setEmailDigest(boolean on) { this.emailDigest = on; }
+    public Instant getDigestSentAt() { return digestSentAt; }
+    public void setDigestSentAt(Instant at) { this.digestSentAt = at; }
 }

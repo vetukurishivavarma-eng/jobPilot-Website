@@ -56,5 +56,9 @@ jobpilot:
   # MAIL_FROM must be a sender verified in Brevo (a plain Gmail works). Unset: the reset link is only logged.
   brevo-api-key: ${BREVO_API_KEY:}
   mail-from: ${MAIL_FROM:}
+  # Daily email digest: new matched jobs + follow-ups due (Spring cron in Asia/Kolkata; "-" disables).
+  digest-cron: ${DIGEST_CRON:0 0 9 * * *}
+  # Public address of this API, for links in emails sent without a request (digest unsubscribe).
+  public-url: ${PUBLIC_URL:https://jobpilot-api-gpa6.onrender.com}
   # Auto mode runs for users who switched it on (Spring cron; "-" disables).
   auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}

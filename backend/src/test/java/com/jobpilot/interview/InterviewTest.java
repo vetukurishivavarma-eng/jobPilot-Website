@@ -200,5 +200,7 @@ class InterviewTest {
                 .content("{\"answer\":\"I build payment systems.\"}")).andExpect(status().isServiceUnavailable());
         mvc().perform(get("/api/interview/sessions").header("Authorization", auth))
                 .andExpect(jsonPath("$[0].mode").value("LIVE")).andExpect(jsonPath("$[0].total").value(8));
+        // the phone's eye-contact page loads without a token
+        mvc().perform(get("/eye.html")).andExpect(status().isOk());
     }
 }

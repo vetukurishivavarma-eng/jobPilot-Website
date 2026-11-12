@@ -1,23 +1,17 @@
 package com.jobpilot.auth;
 
+import com.jobpilot.shared.Mailer;
 import com.jobpilot.config.AppProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -39,25 +33,21 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PasswordResetController {
     private static final Logger log = LoggerFactory.getLogger(PasswordResetController.class);
     static final Duration TTL = Duration.ofMinutes(30);
-    private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     public record ForgotRequest(String email) {}
 
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final byte[] secret;
-    private final String brevoKey, mailFrom;
+    private final Mailer mailer;
     // ponytail: in-memory per-email cooldown, resets on restart; fine on one instance, move to the DB if scaled out
     private final Map<String, Instant> lastSent = new ConcurrentHashMap<>();
 
-    PasswordResetController(UserRepository users, PasswordEncoder encoder, AppProperties props,
-                            @Value("${jobpilot.brevo-api-key:}") String brevoKey, @Value("${jobpilot.mail-from:}") String mailFrom) {
+    PasswordResetController(UserRepository users, PasswordEncoder encoder, AppProperties props, Mailer mailer) {
         this.users = users;
         this.encoder = encoder;
         this.secret = props.jwtSecret().getBytes(StandardCharsets.UTF_8);
-        this.brevoKey = brevoKey;
-        this.mailFrom = mailFrom;
+        this.mailer = mailer;
     }
 
     /** Always 200 with the same message, so it can't be used to find out who has an account. */
@@ -137,33 +127,17 @@ public class PasswordResetController {
     }
 
     private void send(User u, String link) {
-        if (brevoKey.isBlank() || mailFrom.isBlank()) {
-            log.warn("Password reset requested for {} but BREVO_API_KEY/MAIL_FROM are not set; link: {}", u.getEmail(), link);
+        if (!mailer.configured()) {
+            log.warn("Password reset requested for {} but mail is not configured; link: {}", u.getEmail(), link);
             return;
         }
-        ObjectNode body = JSON.createObjectNode().put("subject", "Reset your JobPilot password")
-                .put("htmlContent", "<p>Hi " + esc(u.getFullName()) + ",</p><p>Someone (hopefully you) asked to reset your JobPilot password. "
+        mailer.send(u.getEmail(), "Reset your JobPilot password",
+                "<p>Hi " + Mailer.esc(u.getFullName()) + ",</p><p>Someone (hopefully you) asked to reset your JobPilot password. "
                         + "<a href=\"" + link + "\">Set a new password</a>. The link works for 30 minutes and only once.</p>"
                         + "<p>If this wasn't you, ignore this email; your password stays the same.</p>");
-        body.putObject("sender").put("name", "JobPilot").put("email", mailFrom);
-        body.putArray("to").addObject().put("email", u.getEmail());
-        try {
-            HttpResponse<String> res = HTTP.send(HttpRequest.newBuilder(URI.create("https://api.brevo.com/v3/smtp/email"))
-                    .timeout(Duration.ofSeconds(15)).header("api-key", brevoKey).header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build(), HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() / 100 != 2) log.warn("Reset mail to {} failed: {} {}", u.getEmail(), res.statusCode(), res.body());
-            else log.info("Reset mail sent to {}", u.getEmail());
-        } catch (Exception e) {
-            log.warn("Reset mail to {} failed: {}", u.getEmail(), e.toString());
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-        }
     }
 
-    private static String esc(String s) {
-        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
-    }
-
-    private static String page(String title, String body) {
+    public static String page(String title, String body) {
         return """
                 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
                 <title>%1$s · JobPilot</title><style>

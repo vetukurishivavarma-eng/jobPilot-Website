@@ -186,6 +186,16 @@ public class ApplicationService {
                 || s == Application.Stage.REJECTED || s == Application.Stage.ACCEPTED;
     }
 
+    /** "Title at Company" for each submitted application whose follow-up reminder is due (the email digest). */
+    public List<String> followUpsDue(UUID userId) {
+        Instant now = Instant.now();
+        return apps.findByUserIdOrderByUpdatedAtDesc(userId).stream()
+                .filter(a -> a.status == Application.Status.SUBMITTED && a.followUpAt != null && !a.followUpAt.isAfter(now)
+                        && (a.stage == null || !a.stage.terminal()))
+                .map(a -> jobs.findById(a.jobId).map(j -> j.title() + " at " + j.company()).orElse(null))
+                .filter(java.util.Objects::nonNull).toList();
+    }
+
     public Funnel funnel(UUID userId) {
         List<Application> list = apps.findByUserIdOrderByUpdatedAtDesc(userId);
         List<Application> submitted = list.stream().filter(a -> a.status == Application.Status.SUBMITTED).toList();

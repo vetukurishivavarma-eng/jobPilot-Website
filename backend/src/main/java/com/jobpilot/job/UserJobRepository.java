@@ -18,6 +18,10 @@ public interface UserJobRepository extends JpaRepository<UserJob, UUID> {
             countQuery = "select count(uj) from UserJob uj join uj.job j" + FILTER)
     Page<UserJob> search(UUID u, Collection<UserJob.Status> st, boolean closed, String q, Pageable page);
 
+    /** Still-new, still-open jobs linked to the user after `since` (the email digest). */
+    @Query("select uj.job from UserJob uj join uj.job j where uj.userId = :u and uj.discoveredAt > :since and uj.status = :st and j.closedAt is null")
+    java.util.List<Job> newSince(UUID u, java.time.Instant since, UserJob.Status st);
+
     @Query("select uj from UserJob uj join fetch uj.job where uj.userId = :u and uj.job.id = :jobId")
     Optional<UserJob> find(UUID u, UUID jobId);
 

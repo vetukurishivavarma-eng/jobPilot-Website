@@ -7,6 +7,7 @@ import com.jobpilot.resume.ResumeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -79,6 +80,18 @@ public class MatchService {
     /** In the user's preferred locations and fitting their resume (field, stack, level, requirements): the only jobs the list and auto mode show. Needs skills loaded. */
     public boolean relevant(MatchScorer.Candidate c, Job j) {
         return MatchScorer.inDesiredLocation(c, j.location, j.workplace) && MatchScorer.fitsResume(c, j.title, j.skills, j.minYears, j.seniority);
+    }
+
+    public record NewMatch(UUID jobId, String title, String company, String location, Integer score, String url) {}
+
+    /** Relevant jobs found for the user after `since`, best match first (the email digest). */
+    public List<NewMatch> newMatches(UUID userId, java.time.Instant since, int limit) {
+        MatchScorer.Candidate c = candidate(userId);
+        return tx.execute(s -> userJobs.newSince(userId, since, UserJob.Status.NEW).stream()
+                .filter(j -> relevant(c, j))
+                .map(j -> new NewMatch(j.id(), j.title, j.company, j.location, score(c, j).score(), j.url))
+                .sorted(Comparator.comparing((NewMatch m) -> m.score() == null ? -1 : m.score()).reversed())
+                .limit(limit).toList());
     }
 
     /** Needs the job's skills loaded (inside a transaction, or a job fetched with them). */

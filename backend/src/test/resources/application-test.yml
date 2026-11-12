@@ -8,4 +8,5 @@ jobpilot:
   storage-dir: ./target/test-resumes
   discovery-cron: "-"
   auto-apply-cron: "-"
+  digest-cron: "-"
   ollama-url: http://127.0.0.1:9

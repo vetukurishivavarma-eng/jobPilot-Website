@@ -41,7 +41,7 @@ public class SecurityConfig {
                 }))
                 .authorizeHttpRequests(a -> a
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers("/error", "/api/auth/register", "/api/auth/login", "/api/auth/forgot", "/reset", "/actuator/health").permitAll()
+                        .requestMatchers("/error", "/api/auth/register", "/api/auth/login", "/api/auth/forgot", "/reset", "/unsubscribe", "/eye.html", "/actuator/health").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();

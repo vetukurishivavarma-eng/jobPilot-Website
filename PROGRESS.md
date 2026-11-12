@@ -7,7 +7,7 @@
   - Web: LiveInterview with eye-contact coach (MediaPipe tasks-vision 0.10.14 from jsDelivr, face landmarks in-browser, warns after 2s no-face/head-turned; looking DOWN ignored because typing) + Mic (Web Speech API, en-IN). Mobile: live mode + report, NO camera yet (needs native module; next), keyboard mic for voice.
   - Best bets (`shared/api.ts bestBets`): interviewed jobs ranked by (match + readiness)/2, card on web Jobs + mobile Jobs. Mobile job screen "Mock interview for this job" starts LIVE.
   - Shorter setup: `profileGaps.missing` now only Resume/Skills/Desired roles/Preferred locations (blocking); rest in `later` (application forms ask when needed).
-  - APK 1.2.0 / versionCode 7 build + live Render test (scratchpad live_test.py, smoke-*@example.com user) in progress at time of writing.
+  - APK 1.2.0 / versionCode 7 RELEASED (github jobPilot-apk v1.2.0). Live Render test PASSED (8 adaptive Qs 1.5-6s each + AI report); fix pushed after it: switch topic after 2 Qs (not re-tested). smoke-*@example.com test users in Neon.
 - NEXT: mobile camera eye-contact (react-native-vision-camera + face detector), Profile/Jobs screen styling (waiting on user's specifics), Brevo digest emails, host web frontend, Workday sites.
 
 ## RESUME HERE (2026-11-12, 66 backend tests pass; NOT pushed yet)
