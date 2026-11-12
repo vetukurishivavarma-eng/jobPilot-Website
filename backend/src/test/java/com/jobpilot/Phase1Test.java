@@ -137,8 +137,11 @@ class Phase1Test {
                 .andExpect(jsonPath("$.extractedText").value(containsString("Java Spring Boot")));
         mvc().perform(get("/api/resumes/" + second).header("Authorization", auth))
                 .andExpect(jsonPath("$.extractedText").value(containsString("Data Analyst & SQL")));
-        mvc().perform(get("/api/resumes/" + first + "/file").header("Authorization", auth))
-                .andExpect(status().isOk()).andExpect(header().string("Content-Type", "application/pdf"));
+        // the exact bytes come back (proves DB persistence round-trips, not just a 200)
+        byte[] downloaded = mvc().perform(get("/api/resumes/" + first + "/file").header("Authorization", auth))
+                .andExpect(status().isOk()).andExpect(header().string("Content-Type", "application/pdf"))
+                .andReturn().getResponse().getContentAsByteArray();
+        org.junit.jupiter.api.Assertions.assertArrayEquals(pdf.getBytes(), downloaded);
 
         // A renamed .exe is rejected by content, not by extension
         mvc().perform(multipart("/api/resumes").file(new MockMultipartFile("file", "cv.pdf", "application/pdf", "MZ\u0090 not a pdf".getBytes()))

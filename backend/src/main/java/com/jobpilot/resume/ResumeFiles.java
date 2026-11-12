@@ -1,6 +1,5 @@
 package com.jobpilot.resume;
 
-import com.jobpilot.config.AppProperties;
 import com.jobpilot.shared.ApiException;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -10,27 +9,23 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Resume bytes on local disk + type sniffing + text extraction.
- * ponytail: local disk only; swap for S3/GCS when running more than one backend instance.
+ * Resume bytes in the DB (survives redeploys; Render's disk is ephemeral) + type sniffing + text extraction.
  */
 @Component
 public class ResumeFiles {
     public static final String PDF = "application/pdf";
     public static final String DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-    private final Path dir;
+    private final ResumeBlobRepository blobs;
 
-    public ResumeFiles(AppProperties props) throws IOException {
-        this.dir = Files.createDirectories(Path.of(props.storageDir()).toAbsolutePath());
+    public ResumeFiles(ResumeBlobRepository blobs) {
+        this.blobs = blobs;
     }
 
     /** Decide the type from the bytes, not the client's Content-Type header. */
@@ -76,14 +71,15 @@ public class ResumeFiles {
     }
 
     public void write(String key, byte[] bytes) {
-        try { Files.write(dir.resolve(key), bytes); } catch (IOException e) { throw new UncheckedIOException(e); }
+        blobs.save(new ResumeBlob(key, bytes));
     }
 
     public byte[] read(String key) {
-        try { return Files.readAllBytes(dir.resolve(key)); } catch (IOException e) { throw ApiException.notFound("Resume file"); }
+        return blobs.findById(key).map(ResumeBlob::content).orElseThrow(() -> ApiException.notFound("Resume file"));
     }
 
     public void delete(String key) {
-        try { Files.deleteIfExists(dir.resolve(key)); } catch (IOException ignored) { /* orphan file, harmless */ }
+        // deleteById throws if the row is absent (rollback case, or a legacy resume with no blob) — ignore that
+        try { blobs.deleteById(key); } catch (org.springframework.dao.EmptyResultDataAccessException ignored) { /* already gone */ }
     }
 }

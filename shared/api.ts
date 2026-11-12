@@ -59,6 +59,7 @@ export type Application = {
   createdAt: string; updatedAt: string; submittedAt: string | null
 }
 export type FollowUpEmail = { subject: string; body: string; source: 'AI' | 'TEMPLATE' }
+export type Outreach = { dm: string; subject: string; body: string; source: 'AI' | 'TEMPLATE' }
 export type Funnel = {
   total: number; submitted: number; submittedThisWeek: number
   applied: number; screening: number; interview: number; offer: number; rejected: number; accepted: number; withdrawn: number
@@ -168,9 +169,11 @@ export function createApi(cfg: ApiConfig) {
   createApplication: (jobId: string) => request<Application>('POST', '/applications', { jobId }),
   saveAnswers: (id: string, answers: Record<string, string>) => request<Application>('PUT', `/applications/${id}/answers`, { answers }),
   deleteApplication: (id: string) => request<void>('DELETE', `/applications/${id}`),
+  markApplied: (id: string) => request<Application>('POST', `/applications/${id}/submitted`),
   setApplicationStage: (id: string, stage: Stage, note?: string, followUpInDays?: number | null) =>
     request<Application>('PATCH', `/applications/${id}/stage`, { stage, note, followUpInDays }),
   followUpEmail: (id: string) => request<FollowUpEmail>('POST', `/applications/${id}/follow-up-email`),
+  outreach: (jobId: string) => request<Outreach>('POST', `/jobs/${jobId}/outreach`),
   insights: () => request<Insights>('GET', '/insights'),
   jobDocuments: (jobId: string) => request<{ resume: TailoredDoc | null; letter: TailoredDoc | null }>('GET', `/jobs/${jobId}/documents`),
   tailorResume: (jobId: string) => request<TailoredDoc>('POST', `/jobs/${jobId}/documents/resume`),

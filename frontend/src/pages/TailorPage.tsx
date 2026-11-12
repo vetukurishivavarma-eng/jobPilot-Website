@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, ApiError, type Choice, type Job, type SectionPick, type TailoredDoc } from '../api'
+import { api, ApiError, type Choice, type Job, type Outreach, type SectionPick, type TailoredDoc } from '../api'
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
 
@@ -10,7 +10,7 @@ export default function TailorPage() {
   const [job, setJob] = useState<Job | null>(null)
   const [resume, setResume] = useState<TailoredDoc | null>(null)
   const [letter, setLetter] = useState<TailoredDoc | null>(null)
-  const [tab, setTab] = useState<'resume' | 'letter'>('resume')
+  const [tab, setTab] = useState<'resume' | 'letter' | 'outreach'>('resume')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -28,17 +28,17 @@ export default function TailorPage() {
         <p className="text-sm text-muted">{job.title}. Everything here comes from your profile and resume. Nothing is made up, and you choose what to keep.</p>
       </div>
       <div className="flex gap-1 rounded-lg border border-line bg-white p-1 w-fit" role="tablist">
-        {(['resume', 'letter'] as const).map(t => (
+        {(['resume', 'letter', 'outreach'] as const).map(t => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
             className={`rounded-md px-3 py-1 text-sm font-medium ${tab === t ? 'bg-ink text-paper' : 'text-muted hover:text-ink'}`}>
-            {t === 'resume' ? 'Resume' : 'Cover letter'}
+            {t === 'resume' ? 'Resume' : t === 'letter' ? 'Cover letter' : 'Message recruiter'}
           </button>
         ))}
       </div>
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</p>}
-      {tab === 'resume'
-        ? <ResumeEditor jobId={job.id} doc={resume} onChange={setResume} onError={setError} />
-        : <LetterEditor jobId={job.id} doc={letter} onChange={setLetter} onError={setError} />}
+      {tab === 'resume' ? <ResumeEditor jobId={job.id} doc={resume} onChange={setResume} onError={setError} />
+        : tab === 'letter' ? <LetterEditor jobId={job.id} doc={letter} onChange={setLetter} onError={setError} />
+        : <OutreachPanel jobId={job.id} onError={setError} />}
     </div>
   )
 }
@@ -191,6 +191,40 @@ function LetterEditor({ jobId, doc, onChange, onError }: { jobId: string; doc: T
         <span className="mr-auto" />
         {text === null && <Downloads id={doc.id} onError={onError} />}
       </div>
+    </div>
+  )
+}
+
+/** Draft-only recruiter outreach: a short LinkedIn note + an email. The user finds the recruiter and sends it. */
+function OutreachPanel({ jobId, onError }: { jobId: string; onError: (m: string | null) => void }) {
+  const [d, setD] = useState<Outreach | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
+  async function draft() {
+    setBusy(true); onError(null); setCopied(null)
+    try { setD(await api.outreach(jobId)) } catch (e) { onError(msg(e)) } finally { setBusy(false) }
+  }
+  const copy = (what: string, text: string) => { navigator.clipboard?.writeText(text); setCopied(what) }
+  if (!d) return <Generate label="Draft recruiter message" busy={busy} onClick={draft} hint="A LinkedIn note and an email, from your profile only. You send them yourself." />
+  return (
+    <div className="card space-y-4">
+      {d.source === 'TEMPLATE' && <p className="text-xs text-muted">Template — AI was unavailable.</p>}
+      <div className="space-y-2">
+        <p className="label">LinkedIn note</p>
+        <textarea className="field min-h-24 text-sm" readOnly value={d.dm} />
+        <button className="btn-ghost" onClick={() => copy('dm', d.dm)}>{copied === 'dm' ? 'Copied' : 'Copy note'}</button>
+      </div>
+      <div className="space-y-2 border-t border-line pt-3">
+        <p className="text-sm"><b>Subject:</b> {d.subject}</p>
+        <textarea className="field min-h-40 text-sm" readOnly value={d.body} />
+        <div className="flex gap-3">
+          <button className="btn-ghost" onClick={() => copy('email', `Subject: ${d.subject}
+
+${d.body}`)}>{copied === 'email' ? 'Copied' : 'Copy email'}</button>
+          <a className="btn-ghost" href={`mailto:?subject=${encodeURIComponent(d.subject)}&body=${encodeURIComponent(d.body)}`}>Open in email app</a>
+        </div>
+      </div>
+      <button className="btn-ghost" onClick={draft} disabled={busy}>{busy ? 'Working…' : 'Redraft'}</button>
     </div>
   )
 }
