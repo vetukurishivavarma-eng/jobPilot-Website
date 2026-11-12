@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:backend": "tsc -b && node -e \"require('fs').rmSync('../backend/src/main/resources/static/assets',{recursive:true,force:true})\" && vite build --outDir ../backend/src/main/resources/static",
     "preview": "vite preview"
   },
   "dependencies": {

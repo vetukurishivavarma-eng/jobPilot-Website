@@ -202,5 +202,9 @@ class InterviewTest {
                 .andExpect(jsonPath("$[0].mode").value("LIVE")).andExpect(jsonPath("$[0].total").value(8));
         // the phone's eye-contact page loads without a token
         mvc().perform(get("/eye.html")).andExpect(status().isOk());
+        // the web app is served from this origin: its pages are public, the API is not
+        mvc().perform(get("/jobs")).andExpect(status().isOk()).andExpect(forwardedUrl("/index.html"));
+        mvc().perform(get("/interview/" + id)).andExpect(forwardedUrl("/index.html"));
+        mvc().perform(get("/api/jobs")).andExpect(status().isUnauthorized());
     }
 }

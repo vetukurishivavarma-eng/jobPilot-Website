@@ -42,7 +42,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/error", "/api/auth/register", "/api/auth/login", "/api/auth/forgot", "/reset", "/unsubscribe", "/eye.html", "/actuator/health").permitAll()
-                        .anyRequest().authenticated())
+                        .requestMatchers("/api/**", "/actuator/**").authenticated()
+                        .anyRequest().permitAll()) // the rest is the web app's static files (no data behind them)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
