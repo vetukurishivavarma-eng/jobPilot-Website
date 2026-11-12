@@ -38,7 +38,8 @@ public class SpeechToText {
     public String transcribe(byte[] audio, String contentType) {
         if (!configured()) return null;
         String boundary = "jp" + UUID.randomUUID().toString().replace("-", "");
-        String ext = contentType != null && contentType.contains("mp4") ? "m4a" : contentType != null && contentType.contains("ogg") ? "ogg" : "webm";
+        String t = contentType == null ? "" : contentType;
+        String ext = t.contains("mp4") ? "m4a" : t.contains("ogg") ? "ogg" : t.contains("wav") ? "wav" : t.contains("mpeg") ? "mp3" : "webm";
         ByteArrayOutputStream body = new ByteArrayOutputStream(audio.length + 1024);
         field(body, boundary, "model", model);
         field(body, boundary, "language", "en");
