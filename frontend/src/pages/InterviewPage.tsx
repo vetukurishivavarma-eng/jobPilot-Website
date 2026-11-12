@@ -228,8 +228,10 @@ function Recording({ s }: { s: InterviewSession }) {
     setError(null)
     try {
       const res = await api.recordingFile(s.id)
-      const url = URL.createObjectURL(await res.blob())
-      Object.assign(document.createElement('a'), { href: url, download: `jobpilot-interview-${s.id.slice(0, 8)}.webm` }).click()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+      Object.assign(document.createElement('a'), { href: url, download: `jobpilot-interview-${s.id.slice(0, 8)}.${ext}` }).click()
       URL.revokeObjectURL(url)
     } catch (e) { setError(msg(e)) }
   }

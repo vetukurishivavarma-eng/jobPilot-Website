@@ -50,7 +50,8 @@ export class Engine {
     this.analyser = this.ctx.createAnalyser()
     this.analyser.fftSize = 1024
     this.ctx.createMediaStreamSource(this.stream).connect(this.analyser)
-    const mime = pick(['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'])
+    // MP4 first (plays everywhere: phone gallery, WhatsApp, Windows); WebM only where the browser can't record MP4
+    const mime = pick(['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,opus', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'])
     if (mime) {
       this.full = new MediaRecorder(this.stream, { mimeType: mime, videoBitsPerSecond: 200_000, audioBitsPerSecond: 32_000 })
       this.full.ondataavailable = e => { if (e.data.size) this.fullChunks.push(e.data) }
