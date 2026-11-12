@@ -207,4 +207,17 @@ class InterviewTest {
         mvc().perform(get("/interview/" + id)).andExpect(forwardedUrl("/index.html"));
         mvc().perform(get("/api/jobs")).andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void questionsArePitchedAtTheCandidatesLevel() {
+        Tailor.Facts fresher = new Tailor.Facts("Ravi K", "r@example.com", null, "Hyderabad", null, "CSE graduate", null, "0",
+                null, List.of("Java", "SQL"), Set.of(), List.of(), List.of(),
+                "PROJECTS: Library management system in Java and MySQL with JWT login.");
+        String p = Interview.livePrompt(fresher, JOB, List.of(), Interview.liveStart().items().get(0), "I built a library app.", false);
+        assertTrue(p.contains("FRESHER") && p.contains("CS fundamentals"));
+        assertTrue(p.contains("Library management system"), "a fresher's projects reach the interviewer");
+        assertTrue(Interview.reportPrompt(fresher, JOB, List.of()).contains("FRESHER"));
+        assertTrue(Interview.livePrompt(FACTS, JOB, List.of(), Interview.liveStart().items().get(0), "x", false).contains("MID-LEVEL")); // 4 years
+        assertTrue(Interview.questionsPrompt(fresher, JOB).contains("FRESHER"));
+    }
 }

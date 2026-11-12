@@ -290,7 +290,7 @@ public final class Tailor {
                 + (e.endDate() == null ? "present" : e.endDate()) + "\n" + (e.description() == null ? "" : e.description());
     }
 
-    static String educationLine(Education e) {
+    public static String educationLine(Education e) {
         String years = e.startYear() == null && e.endYear() == null ? ""
                 : " (" + (e.startYear() == null ? "" : e.startYear()) + (e.endYear() == null ? "" : "–" + e.endYear()) + ")";
         return e.degree() + (e.field() == null || e.field().isBlank() ? "" : ", " + e.field()) + " — " + e.institution() + years

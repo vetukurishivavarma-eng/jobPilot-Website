@@ -66,7 +66,7 @@ public final class Interview {
         StringBuilder t = new StringBuilder();
         for (Item i : done) t.append("Q: ").append(i.question()).append("\nA: ").append(cut(i.answer(), 1200)).append('\n');
         String ask = last ? "" : """
-                next_question: ONE question, as a real interviewer would ask next. Dig into the projects, tools and decisions the candidate actually mentioned (why that design, what broke, trade-offs, how it scaled, what they would change) and test the skills the job needs. If an answer was vague, press for specifics once, then move on. Never ask more than 2 questions in a row on the same topic: after that switch to another project, another skill the job needs, or a behavioural question. Include at least one behavioural question in the interview. Never repeat or rephrase an earlier question. One or two sentences, no answer.
+                next_question: ONE question, as a real interviewer would ask a candidate at this level (see CANDIDATE LEVEL: cover what it says interviewers test, across the interview). Dig into the projects, tools and decisions the candidate actually mentioned (why that design, what broke, trade-offs, how it scaled, what they would change) and test the skills the job needs. If an answer was vague, press for specifics once, then move on. Never ask more than 2 questions in a row on the same topic: after that switch to another project, another skill the job needs, or a behavioural question. Include at least one behavioural question in the interview. Never repeat or rephrase an earlier question. One or two sentences, no answer.
                 """;
         return """
                 You are an interviewer running a realistic interview for the role below. Interview the way this company's interviewers typically do for this role and level, from what is publicly known about their process; if you don't know the company, run a standard interview for this level. Never claim to have seen real interview reports.
@@ -74,11 +74,12 @@ public final class Interview {
                 Return JSON only: {"relevance":1-5,"specificity":1-5,"technical":1-5,"concision":1-5,"improvements":["..."],"improved_answer":"..."%s}
                 relevance: answers the question that was asked.
                 specificity: a concrete example; for behavioural questions STAR (situation, task, action, result).
-                technical: correct and precise, at the depth expected for this level.
+                technical: correct and precise, at the depth expected for the candidate's level (not more).
                 concision: fits in 2 minutes spoken, no filler.
                 improvements: 2 or 3 concrete fixes for this answer.
                 improved_answer: this answer rewritten better, first person, at most 150 words, using ONLY facts from the answer and the candidate profile. Never invent numbers, employers, tools or results; where a number would help, write [add your own number here].
                 %s
+                CANDIDATE LEVEL: %s
                 CANDIDATE:
                 %s
                 ROLE: %s
@@ -91,7 +92,7 @@ public final class Interview {
                 %s
                 """.formatted(last ? " (this was the last question)" : ", then ask the next question",
                 last ? "" : ",\"next_question\":\"...\"", ask,
-                profileText(f), roleLine(job),
+                level(f), profileText(f), roleLine(job),
                 job.description() == null ? "(none)" : cut(job.description(), 1500),
                 t.length() == 0 ? "(this is the first question)" : cut(t.toString(), 6000),
                 item.question(), cut(answer, 3000));
@@ -131,16 +132,17 @@ public final class Interview {
                 Return JSON only: {"verdict":"...","strengths":["..."],"gaps":[{"area":"...","detail":"..."}],"focus":["..."]}
                 verdict: 2 sentences, honest: would this candidate likely clear this round today, and why.
                 strengths: up to 3, each tied to something they actually said.
-                gaps: up to 4 areas where they fall short of what interviewers expect for this role and level today (the market standard); detail = what a strong candidate would have said or shown.
+                gaps: up to 4 areas where they fall short of what interviewers expect today for this role at the candidate's level (the market standard for a candidate like them, e.g. a fresher is compared with strong freshers, not with seniors); detail = what a strong candidate at that level would have said or shown.
                 focus: up to 4 concrete things to practise before the real interview.
                 Use only the transcript and profile; never invent facts about the candidate.
 
+                CANDIDATE LEVEL: %s
                 CANDIDATE:
                 %s
                 ROLE: %s
                 TRANSCRIPT:
                 %s
-                """.formatted(profileText(f), roleLine(job), cut(t.toString(), 9000));
+                """.formatted(level(f), profileText(f), roleLine(job), cut(t.toString(), 9000));
     }
 
     /** Mean rubric score of the scored answers as 0-100 (1 -> 0, 5 -> 100); null if none were scored. */
@@ -190,16 +192,17 @@ public final class Interview {
                 Return JSON only: {"questions":[{"type":"behavioural|technical|role","q":"..."}]}
                 Exactly 6 questions: 2 behavioural, 3 technical, 1 role.
                 behavioural: a past situation ("Tell me about a time..."), fitting the candidate's experience.
-                technical: about skills the job text asks for that the candidate also has; else the candidate's main skills.
+                technical: about skills the job text asks for that the candidate also has; else the candidate's main skills. Pitch them at the candidate's level below.
                 role: why this role or company, using only what the job text says. Never invent facts about the company.
                 One sentence per question. No answers, no numbering.
 
+                CANDIDATE LEVEL: %s
                 CANDIDATE:
                 %s
                 ROLE: %s
                 JOB TEXT:
                 %s
-                """.formatted(profileText(f), roleLine(job), job.description() == null ? "(none, use the role and the candidate's skills)" : cut(job.description(), 2000));
+                """.formatted(level(f), profileText(f), roleLine(job), job.description() == null ? "(none, use the role and the candidate's skills)" : cut(job.description(), 2000));
     }
 
     /** Accepts {"questions":[{type,q}]}, a bare array, plain strings, or {"technical":[...], ...}. */
@@ -355,6 +358,27 @@ public final class Interview {
 
     static String roleLine(Tailor.JobInfo job) { return job.company() == null ? job.title() : job.title() + " at " + job.company(); }
 
+    /** Years of experience as a number (first number in the profile's text), null if unknown. */
+    static Double years(Tailor.Facts f) {
+        if (f.years() == null) return null;
+        Matcher m = FIRST_NUMBER.matcher(f.years());
+        return m.find() ? Double.parseDouble(m.group()) : null;
+    }
+
+    /**
+     * What interviewers in India actually test at the candidate's level. JobPilot's users are 22-30: freshers to mid-level.
+     * Unknown years = treated as early-career.
+     */
+    static String level(Tailor.Facts f) {
+        Double y = years(f);
+        if (y != null && y < 1) return """
+                FRESHER (0-1 years; campus or off-campus hiring). Interviewers test: CS fundamentals (OOP, DBMS and SQL, operating systems, computer networks); data structures and algorithms (ask them to explain an approach and its time/space complexity aloud, not to write full code); their academic, internship and personal projects in depth (their own contribution, why that stack, what they'd do differently); and HR questions (strengths, why this company, willingness to relocate). Do not expect production or team-lead experience.""";
+        if (y == null || y < 3) return """
+                EARLY-CAREER (1-3 years). Interviewers test: CS fundamentals and DSA reasoning are still asked; depth on their real work: APIs, databases and queries, debugging a production bug, testing, code reviews, working in a team; light design (how would you design this feature/module).""";
+        return """
+                MID-LEVEL (3+ years). Interviewers test: high- and low-level system design, owning features end to end, trade-offs and why, production incidents and performance, scaling, mentoring juniors and influencing decisions.""";
+    }
+
     /** Compact candidate facts for prompts (not the whole resume: tokens cost time on a CPU, money on a cloud model). */
     static String profileText(Tailor.Facts f) {
         StringBuilder b = new StringBuilder();
@@ -364,8 +388,11 @@ public final class Interview {
         for (Experience e : f.experiences())
             b.append("- ").append(e.title()).append(" at ").append(e.company()).append(": ")
                     .append(e.description() == null ? "" : cut(e.description().replaceAll("\\s*\\R\\s*", "; "), 400)).append('\n');
-        if (f.experiences().isEmpty() && f.resumeText() != null) b.append(cut(f.resumeText(), 1200));
-        return cut(b.toString().strip(), 2000);
+        for (com.jobpilot.profile.Profile.Education e : f.educations()) b.append("Education: ").append(Tailor.educationLine(e)).append('\n');
+        // freshers/early-career: their projects live in the resume text, not in work experience
+        Double y = years(f);
+        if (f.resumeText() != null && (f.experiences().isEmpty() || y == null || y < 2)) b.append(cut(f.resumeText(), 1200));
+        return cut(b.toString().strip(), 2600);
     }
 
     /** JSON from a reply that may be wrapped in prose or ``` fences; null when unreadable. */
