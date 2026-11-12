@@ -202,9 +202,9 @@ class InterviewTest {
     void oneEvaluationCallScoresEverythingAndWritesTheReport() {
         Interview.Content c = after("I built a ledger in Java.", "Kafka with idempotency keys.");
         Interview.Evaluation ev = Interview.evaluate(FACTS, JOB, c.items(), p -> """
-                {"scores":[{"q":1,"relevance":5,"specificity":3,"technical":4,"concision":4,"tip":"Say your own part."},
-                           {"q":2,"relevance":2,"specificity":1,"technical":2,"concision":3,"tip":"Explain how the keys are stored."}],
-                 "improved":[{"q":2,"answer":"I used Kafka with idempotency keys and cut duplicates by 90%."}],
+                {"scores":[{"q":1,"s":[5,3,4,4],"tip":"Say your own part."},
+                           {"q":2,"s":[2,1,2,3],"tip":"Explain how the keys are stored."}],
+                 "improved":{"q":2,"a":"I used Kafka with idempotency keys and cut duplicates by 90%."},
                  "verdict":"Close.","strengths":["Clear"],"gaps":[{"area":"Kafka depth","detail":"Explain offsets"}],"focus":["STAR"]}""");
         assertEquals(4, ev.items().get(0).feedback().score());
         assertEquals(List.of("Say your own part."), ev.items().get(0).feedback().improvements());
@@ -212,6 +212,11 @@ class InterviewTest {
         assertEquals("Kafka depth", ev.report().gaps().get(0).area());
         assertEquals(50, ev.report().readiness()); // mean 3.0 -> (3-1)/4
         assertNull(Interview.evaluate(FACTS, JOB, c.items(), p -> "not json"));
+        // the prompt asks for the compact form; a model that spells the keys out still parses
+        assertTrue(Interview.evaluatePrompt(FACTS, JOB, c.items()).contains("\"s\":[r,p,t,c]"));
+        Interview.Evaluation longForm = Interview.evaluate(FACTS, JOB, c.items(), p ->
+                "{\"scores\":[{\"q\":1,\"relevance\":4,\"specificity\":4,\"technical\":4,\"concision\":4}],\"verdict\":\"Good.\"}");
+        assertEquals(4, longForm.items().get(0).feedback().score());
     }
 
     @Test

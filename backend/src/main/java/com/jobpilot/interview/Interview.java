@@ -138,7 +138,11 @@ public final class Interview {
         return qs.get(Math.min(Math.max(n - 1, 0), qs.size() - 1)).text();
     }
 
-    /** One call at the end: rubric + one tip per answer, better versions of the two weakest, and the report. null if the model fails. */
+    /**
+     * One call at the end: rubric + one tip per answer, a better version of the weakest, and the report. null if the model fails.
+     * Compact on purpose (scores as "s":[relevance,specificity,technical,concision]): ~600 output tokens, under Groq's
+     * 1,000 output-tokens-per-minute limit; the long key form was 1,210.
+     */
     record Evaluation(List<Item> items, Report report) {}
 
     static Evaluation evaluate(Tailor.Facts f, Tailor.JobInfo job, List<Item> items, Function<String, String> llmJson) {
@@ -149,13 +153,15 @@ public final class Interview {
         if (scores != null && scores.isArray()) for (JsonNode s : scores) {
             int q = s.path("q").asInt(0) - 1;
             if (q < 0 || q >= out.size() || out.get(q).answer() == null) continue;
-            Feedback fb = parseFeedback(s.toString());
+            Feedback fb = compactFeedback(s);
+            if (fb == null) fb = parseFeedback(s.toString()); // a model that ignored the format and spelled the keys out
             if (fb != null) out.set(q, withFeedback(out.get(q), fb));
         }
         JsonNode better = r.get("improved");
+        if (better != null && better.isObject()) better = JSON.createArrayNode().add(better);
         if (better != null && better.isArray()) for (JsonNode b : better) {
             int q = b.path("q").asInt(0) - 1;
-            String text = text(b, "answer", "improved_answer", "text");
+            String text = text(b, "a", "answer", "improved_answer", "text");
             if (q < 0 || q >= out.size() || text == null || out.get(q).answer() == null) continue;
             Item it = out.get(q);
             Feedback old = it.feedback() != null ? it.feedback() : new Feedback(null, Map.of(), List.of(), null, List.of());
@@ -175,6 +181,19 @@ public final class Interview {
         return new Evaluation(out, new Report(readiness, verdict == null ? null : cut(verdict, 600), strings(r, "strengths"), gaps, strings(r, "focus"), "AI"));
     }
 
+    /** {"q":1,"s":[5,3,4,4],"tip":"..."} -> Feedback; null if "s" isn't 4 scores. */
+    static Feedback compactFeedback(JsonNode n) {
+        JsonNode sc = n.get("s");
+        if (sc == null || !sc.isArray() || sc.size() != 4) return null;
+        String[] keys = {"relevance", "specificity", "technical", "concision"};
+        Map<String, Integer> rubric = new LinkedHashMap<>();
+        for (int i = 0; i < 4; i++) { Integer v = score(sc.get(i)); if (v != null) rubric.put(keys[i], v); }
+        if (rubric.isEmpty()) return null;
+        String tip = text(n, "tip", "fix");
+        return new Feedback((int) Math.round(rubric.values().stream().mapToInt(x -> x).average().orElse(0)), rubric,
+                tip == null ? List.of() : List.of(cut(tip.strip(), 300)), null, List.of());
+    }
+
     private static Item withFeedback(Item i, Feedback fb) { return new Item(i.type(), i.question(), i.answer(), fb, i.signals()); }
 
     static String evaluatePrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> items) {
@@ -190,11 +209,11 @@ public final class Interview {
         }
         return """
                 You are a hiring panel scoring a finished spoken mock interview for the role below. Answers are speech-to-text: ignore filler words and transcription slips.
-                Return JSON only: {"scores":[{"q":1,"relevance":1-5,"specificity":1-5,"technical":1-5,"concision":1-5,"tip":"..."}],"improved":[{"q":1,"answer":"..."}],"verdict":"...","strengths":["..."],"gaps":[{"area":"...","detail":"..."}],"focus":["..."]}
-                scores: one per numbered answer. relevance = answers what was asked; specificity = concrete example, STAR for behavioural; technical = correct at the candidate's level (not more); concision = to the point. tip = the one most useful fix, max 20 words.
-                improved: the 2 weakest answers rewritten, first person, max 100 words each, ONLY facts from that answer and the profile; never invent numbers, employers, tools or results; write [add your own number here] where a number would help.
-                verdict: 2 honest sentences: would they likely clear this round today, and why.
-                strengths: up to 3, tied to what they said. gaps: up to 4 areas below what interviewers expect for this role AT THE CANDIDATE'S LEVEL (compare with strong peers at that level, not seniors); detail = what a strong candidate would have said. focus: up to 4 things to practise.
+                Return compact JSON only, no extra keys: {"scores":[{"q":1,"s":[r,p,t,c],"tip":"..."}],"improved":{"q":1,"a":"..."},"verdict":"...","strengths":["..."],"gaps":[{"area":"...","detail":"..."}],"focus":["..."]}
+                scores: one per numbered answer; s = four 1-5 scores: r relevance (answers what was asked), p specificity (concrete example; STAR for behavioural), t technical (correct at the candidate's level, not more), c concision. tip: the one most useful fix, max 12 words.
+                improved: the single weakest answer rewritten, first person, max 70 words, ONLY facts from that answer and the profile; never invent numbers, employers, tools or results; write [add your own number here] where a number would help.
+                verdict: 2 short honest sentences: would they likely clear this round today, and why.
+                strengths: up to 2, max 12 words each, tied to what they said. gaps: up to 3 areas below what interviewers expect for this role AT THE CANDIDATE'S LEVEL (compare with strong peers at that level, not seniors); detail = what a strong candidate would have said, max 20 words. focus: up to 3 things to practise, max 10 words each.
                 CANDIDATE LEVEL: %s
                 CANDIDATE:
                 %s

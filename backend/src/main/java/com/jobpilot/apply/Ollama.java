@@ -1,5 +1,9 @@
 package com.jobpilot.apply;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
 import com.jobpilot.config.AppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,8 +37,12 @@ public class Ollama {
     static final int MAX_TEXT_TOKENS = 900, MAX_JSON_TOKENS = 2000, MAX_SHORT_TOKENS = 300; // short: ~50 for the question + low-effort reasoning
 
     private final AppProperties props;
+    private final String reportModel;
 
-    Ollama(AppProperties props) { this.props = props; }
+    Ollama(AppProperties props, @org.springframework.beans.factory.annotation.Value("${jobpilot.report-model:}") String reportModel) {
+        this.props = props;
+        this.reportModel = reportModel.strip();
+    }
 
     public String generate(String prompt) {
         return call(prompt, false, MAX_TEXT_TOKENS, 0.3);
@@ -50,9 +58,23 @@ public class Ollama {
         return call(prompt, true, MAX_JSON_TOKENS, 0);
     }
 
+    /**
+     * The end-of-interview report: tries REPORT_MODEL first (default gpt-oss-120b), then the usual chain. Its own
+     * per-minute output budget, so the report doesn't eat Qwen's 1,000-tokens/minute that the live questions need.
+     */
+    public String generateReport(String prompt) {
+        return call(prompt, true, MAX_JSON_TOKENS, 0, reportModel);
+    }
+
     private String call(String prompt, boolean json, int maxTokens, double temperature) {
+        return call(prompt, json, maxTokens, temperature, "");
+    }
+
+    private String call(String prompt, boolean json, int maxTokens, double temperature, String preferModel) {
+        List<AppProperties.Llm> chain = new ArrayList<>(props.llms());
+        if (!preferModel.isEmpty()) chain.sort(Comparator.comparing((AppProperties.Llm l) -> !l.model().equals(preferModel))); // stable: preferred first
         // ponytail: an exhausted model is re-tried on every call (~100 ms per 429); add a cooldown if that latency shows
-        for (AppProperties.Llm llm : props.llms()) {
+        for (AppProperties.Llm llm : chain) {
             String r = cloud(llm, prompt, json, maxTokens, temperature);
             if (r != null && !r.isEmpty()) return r;
         }

@@ -52,6 +52,8 @@ jobpilot:
   llm2-url: ${LLM2_URL:}
   llm2-api-key: ${LLM2_API_KEY:}
   llm2-model: ${LLM2_MODEL:}
+  # End-of-interview report model, tried first (its own per-minute token budget; live questions keep the main model).
+  report-model: ${REPORT_MODEL:openai/gpt-oss-120b}
   # Forgot-password emails via Brevo's HTTP API (free 300/day, https://app.brevo.com -> SMTP & API -> API keys).
   # MAIL_FROM must be a sender verified in Brevo (a plain Gmail works). Unset: the reset link is only logged.
   brevo-api-key: ${BREVO_API_KEY:}

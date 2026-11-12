@@ -146,7 +146,7 @@ public class InterviewController {
             items.add(next);
             saved = new Interview.Content(c.source(), items, "LIVE", null, c.violationCount(), null);
         } else {
-            Interview.Evaluation ev = Interview.evaluate(facts, job, items, ollama::generateJson);
+            Interview.Evaluation ev = Interview.evaluate(facts, job, items, ollama::generateReport);
             if (ev != null) saved = new Interview.Content(c.source(), ev.items(), "LIVE", ev.report(), c.violationCount(), null);
         }
         return save(s, saved);
@@ -209,7 +209,7 @@ public class InterviewController {
         if (!c.live() || c.ended() != null || c.planAnswered() < Interview.LIVE_QUESTIONS)
             throw new ApiException(HttpStatus.CONFLICT, "NOT_FINISHED", "Finish the interview first.");
         if (c.report() != null) return dto(s);
-        Interview.Evaluation ev = Interview.evaluate(tailor.facts(userId), job(userId, s), c.items(), ollama::generateJson);
+        Interview.Evaluation ev = Interview.evaluate(tailor.facts(userId), job(userId, s), c.items(), ollama::generateReport);
         if (ev == null) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE", "The AI couldn't write the report right now. Try again in a minute.");
         return save(s, new Interview.Content(c.source(), ev.items(), "LIVE", ev.report(), c.violationCount(), null));
     }
