@@ -1,5 +1,10 @@
 # JobPilot AI — Progress
 
+## 2026-11-13 token measurements (Render logs, one 8-question interview, thin test profile)
+- Old per-turn scoring design: 9 calls, 7,741 in / 2,498 out = ~10.2K tokens.
+- Now: 6 short question calls on Qwen (389-601 in, 32-58 out each, ~0.5 s) + 1 report call on gpt-oss-120b (REPORT_MODEL, chain logged as "LLM chain for ...") = 4,148 in / 1,129 out = ~5.3K tokens (-48%). Report 840 out (1,630 chars; rest is gpt-oss low-effort reasoning), under Groq's 1,000 output-tokens/min, and off Qwen's budget. Expect ~12K with a real profile + JD + long answers.
+- Free-tier capacity (Groq table, maybe Developer-tier numbers; check console.groq.com/settings/limits): ~50 interviews/day by LLM tokens (200K TPD x 3 models, shared with all JobPilot AI), Whisper ~80/day and ~20/hour (28,800 audio s/day, 7,200/h). Gemini overflow limits only visible signed-in at aistudio.google.com/rate-limit.
+
 ## RESUME HERE (2026-11-13, 1.3.0 = spoken interview; 76 backend tests pass; pushed both repos)
 - **Audience: ages 22-30, freshers to mid-level.** Interview prompts carry a level band (`Interview.level`) and a FIXED per-level question plan (`FRESHER_PLAN`/`EARLY_PLAN`/`MID_PLAN`, `focus(f, n)`): live test showed the model ignores "max 2 per topic" otherwise.
 - **Token plan** (`Interview.next/nextPrompt/evaluate`): per turn ONE short text call (`Ollama.generateShort`, 300 max tokens, temp 0.6) = next question only, compact transcript (old questions + latest answer only); opening/closing HR/notes-probe are templates (0 calls); ONE JSON call at the end scores every answer + improves the 2 weakest + writes the report. POST /{id}/report retries it. ~half the input tokens of the old per-turn scoring.
