@@ -12,6 +12,11 @@ import TailorPage from './pages/TailorPage'
 import ApplicationsPage, { ApplicationPage } from './pages/ApplicationsPage'
 import InterviewPage, { InterviewSessionPage } from './pages/InterviewPage'
 import InsightsPage from './pages/InsightsPage'
+import LivePage from './pages/LivePage'
+
+// The phone app opens /live/:id in a WebView with its sign-in token in the URL fragment (never sent to the server).
+const handoff = /[#&]t=([^&]+)/.exec(location.hash)
+if (handoff) { token.set(decodeURIComponent(handoff[1])); history.replaceState(null, '', location.pathname) }
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -29,6 +34,7 @@ function App() {
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/jobs" /> : <AuthPage mode="login" />} />
           <Route path="/register" element={user ? <Navigate to="/jobs" /> : <AuthPage mode="register" />} />
+          <Route path="/live/:id" element={user ? <LivePage /> : <Navigate to="/login" />} />
           <Route element={user ? <Shell /> : <Navigate to="/login" />}>
             <Route element={<Unlocked />}>
               <Route path="/jobs" element={<JobsPage />} />

@@ -25,61 +25,99 @@ public final class Interview {
     public record Question(String type, String text) {}
     /** score = rounded mean of the rubric; rubric keys: relevance, specificity, technical, concision (1-5 each). */
     public record Feedback(Integer score, Map<String, Integer> rubric, List<String> improvements, String improvedAnswer, List<String> warnings) {}
-    public record Item(String type, String question, String answer, Feedback feedback) {}
+    /**
+     * What the camera saw while the candidate answered (all on the device; percentages of the answer's frames).
+     * away = no face or head turned; eyesOff = face to the camera but eyes off to the side or down (reading-like);
+     * tense = brows down / lips pressed; pasted = text pasted into the typed answer. Any field may be null.
+     */
+    public record Signals(Integer seconds, Integer away, Integer eyesOff, Integer tense, Integer smile, Boolean pasted) {
+        static Signals clean(Signals s) {
+            if (s == null) return null;
+            return new Signals(clamp(s.seconds, 3600), clamp(s.away, 100), clamp(s.eyesOff, 100), clamp(s.tense, 100), clamp(s.smile, 100), s.pasted);
+        }
+        private static Integer clamp(Integer v, int max) { return v == null ? null : Math.max(0, Math.min(max, v)); }
+        /** Reads like notes or another screen: eyes off-screen for 40%+ of a 15s+ answer, head away half the time, or pasted text. */
+        boolean suspicious() {
+            boolean longEnough = seconds == null || seconds >= 15;
+            return Boolean.TRUE.equals(pasted) || longEnough && (eyesOff != null && eyesOff >= 40 || away != null && away >= 50);
+        }
+        boolean looksTense() { return tense != null && tense >= 40; }
+    }
+    public record Item(String type, String question, String answer, Feedback feedback, Signals signals) {
+        public Item(String type, String question, String answer, Feedback feedback) { this(type, question, answer, feedback, null); }
+    }
     /**
      * source: AI (model wrote the questions) or TEMPLATE (model unavailable, standard questions from the job's skills).
      * mode: SET (all questions up front; null on old sessions) or LIVE (one question at a time, each built on the answers so far).
-     * report: LIVE only, written after the last answer.
+     * report: LIVE only, written after the last answer. violations: phone seen on camera (1 = warned); ended: POLICY after the 2nd.
      */
-    public record Content(String source, List<Item> items, String mode, Report report) {
-        Content(String source, List<Item> items) { this(source, items, "SET", null); }
+    public record Content(String source, List<Item> items, String mode, Report report, Integer violations, String ended) {
+        Content(String source, List<Item> items) { this(source, items, "SET", null, 0, null); }
+        Content(String source, List<Item> items, String mode, Report report) { this(source, items, mode, report, 0, null); }
         boolean live() { return "LIVE".equals(mode); }
+        int violationCount() { return violations == null ? 0 : violations; }
+        /** Planned questions answered (a PROBE about notes doesn't use up a slot). */
+        int planAnswered() { return (int) items.stream().filter(i -> i.answer() != null && !"PROBE".equals(i.type())).count(); }
     }
     /** readiness 0-100 from the mean rubric score; gaps compare the answers with what interviewers expect at this level. */
     public record Report(Integer readiness, String verdict, List<String> strengths, List<Gap> gaps, List<String> focus, String source) {}
     public record Gap(String area, String detail) {}
 
     static final int LIVE_QUESTIONS = 8;
+    static final int MAX_PROBES = 2;
     static final String INTRO = "Tell me about yourself: your background, and one project you're proud of. What was your part in it?";
+    static final String PROBE = "Before we go on: your eyes kept moving away from the screen, as if you were reading. Are you looking at notes or another screen? In a real interview that counts against you. Please answer the last question again, in your own words.";
+    static final String POLICY = "This interview was stopped: a phone was seen on camera twice, which violates JobPilot Policy.";
 
     // ------------------------------------------------------------------ live interview
+    //
+    // Token plan (2026-11-12): each turn asks the model for ONLY the next question, as short plain text (~50 output
+    // tokens), from a fixed prefix (rules -> level -> candidate -> job, cacheable) plus a compact transcript (earlier
+    // questions only + the latest answer). All scoring and the report happen once, at the end, in one JSON call.
+    // The opening, the closing HR question and the notes probe are templates: no model call at all.
 
-    static Content liveStart() { return new Content("AI", List.of(new Item("INTRO", INTRO, null, null)), "LIVE", null); }
+    static Content liveStart() { return new Content("AI", List.of(new Item("INTRO", INTRO, null, null)), "LIVE", null, 0, null); }
 
-    /** One model call scores the answer AND asks the next question, like an interviewer following up. next is null after the last question. */
-    record Turn(Feedback feedback, String next) {}
-
-    static Turn liveTurn(Tailor.Facts f, Tailor.JobInfo job, List<Item> done, Item item, String answer, boolean last, Function<String, String> llmJson) {
-        String raw = llmJson == null ? null : llmJson.apply(livePrompt(f, job, done, item, answer, last));
-        Feedback fb = checked(f, item, answer, parseFeedback(raw));
-        String next = null;
-        if (!last) {
-            JsonNode root = readJson(raw);
-            if (root != null && root.isObject()) next = text(root, "next_question", "nextQuestion", "next");
-            if (next == null || next.strip().length() < 10) next = fallbackNext(f, job, done.size() + 1);
-            next = cut(next.strip(), 400);
-        }
-        return new Turn(fb, next);
+    /** The next item after an answer: a probe if the answer looked read out, else the plan's next question. null when the plan is done. */
+    static Item next(Tailor.Facts f, Tailor.JobInfo job, Content c, Function<String, String> llmText) {
+        int n = c.planAnswered();
+        if (n >= LIVE_QUESTIONS) return null;
+        Item last = c.items().get(c.items().size() - 1);
+        long probes = c.items().stream().filter(i -> "PROBE".equals(i.type())).count();
+        if (!"PROBE".equals(last.type()) && last.signals() != null && last.signals().suspicious() && probes < MAX_PROBES)
+            return new Item("PROBE", PROBE, null, null);
+        if (n == LIVE_QUESTIONS - 1) return new Item("FOLLOW_UP", closing(job), null, null);
+        String q = llmText == null ? null : clean(llmText.apply(nextPrompt(f, job, c.items(), n)));
+        return new Item("FOLLOW_UP", q != null ? q : fallbackNext(f, job, n), null, null);
     }
 
-    static String livePrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> done, Item item, String answer, boolean last) {
+    static String closing(Tailor.JobInfo job) {
+        return "Last question: why do you want to join " + (job.company() == null ? "a team like ours" : job.company())
+                + ", and where do you see yourself growing in the next two or three years?";
+    }
+
+    /** A model's question: first non-empty line, quotes/labels stripped; null if it doesn't look like a question. */
+    static String clean(String raw) {
+        if (raw == null) return null;
+        for (String line : raw.strip().split("\\R")) {
+            String s = line.strip().replaceFirst("^(?i)(next[_ ]question|question|interviewer|q\\d*)\\s*[:.-]\\s*", "")
+                    .replaceAll("^[\"'*]+|[\"'*]+$", "").strip();
+            if (s.length() >= 15) return cut(s, 400);
+        }
+        return null;
+    }
+
+    static String nextPrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> items, int n) {
         StringBuilder t = new StringBuilder();
-        for (Item i : done) t.append("Q: ").append(i.question()).append("\nA: ").append(cut(i.answer(), 1200)).append('\n');
-        String ask = last ? "" : """
-                next_question: ONE question, as a real interviewer would ask a candidate at this level. It MUST be about: %s
-                Tie it to what the candidate actually said or to the skills the job needs where that fits the focus. Never repeat or rephrase an earlier question. One or two sentences, no answer.
-                """.formatted(focus(f, done.size() + 1));
+        for (int i = 0; i < items.size() - 1; i++) t.append("Q: ").append(cut(items.get(i).question(), 200)).append('\n'); // no old answers: tokens
+        Item last = items.get(items.size() - 1);
+        t.append("Q: ").append(last.question()).append("\nA: ").append(cut(last.answer(), 1500));
+        String mood = last.signals() != null && last.signals().looksTense()
+                ? "\nThe candidate looks tense on camera: open with a few warm words before the question." : "";
+        // fixed prefix first (identical every turn -> provider prompt cache), variable part last
         return """
-                You are an interviewer running a realistic interview for the role below. Interview the way this company's interviewers typically do for this role and level, from what is publicly known about their process; if you don't know the company, run a standard interview for this level. Never claim to have seen real interview reports.
-                Score the candidate's latest answer%s.
-                Return JSON only: {"relevance":1-5,"specificity":1-5,"technical":1-5,"concision":1-5,"improvements":["..."],"improved_answer":"..."%s}
-                relevance: answers the question that was asked.
-                specificity: a concrete example; for behavioural questions STAR (situation, task, action, result).
-                technical: correct and precise, at the depth expected for the candidate's level (not more).
-                concision: fits in 2 minutes spoken, no filler.
-                improvements: 2 or 3 concrete fixes for this answer.
-                improved_answer: this answer rewritten better, first person, at most 150 words, using ONLY facts from the answer and the candidate profile. Never invent numbers, employers, tools or results; where a number would help, write [add your own number here].
-                %s
+                You are a friendly but rigorous interviewer in a live spoken interview for the role below. Interview the way this company's interviewers typically do for this level, from what is publicly known; never claim to have seen real interview reports.
+                Reply with ONLY the next question you say aloud: one or two short spoken sentences, no preamble, no labels, no answer, no lists or code.
                 CANDIDATE LEVEL: %s
                 CANDIDATE:
                 %s
@@ -88,15 +126,10 @@ public final class Interview {
                 %s
                 INTERVIEW SO FAR:
                 %s
-                LATEST QUESTION: %s
-                LATEST ANSWER:
-                %s
-                """.formatted(last ? " (this was the last question)" : ", then ask the next question",
-                last ? "" : ",\"next_question\":\"...\"", ask,
-                level(f), profileText(f), roleLine(job),
-                job.description() == null ? "(none)" : cut(job.description(), 1500),
-                t.length() == 0 ? "(this is the first question)" : cut(t.toString(), 6000),
-                item.question(), cut(answer, 3000));
+                NEXT QUESTION MUST BE ABOUT: %s
+                Tie it to what the candidate actually said where that fits. Never repeat an earlier question.%s
+                """.formatted(level(f), profileText(f), roleLine(job),
+                job.description() == null ? "(none)" : cut(job.description(), 1200), t, focus(f, n), mood);
     }
 
     /** Model unavailable or unreadable: the standard set, in order. */
@@ -105,38 +138,63 @@ public final class Interview {
         return qs.get(Math.min(Math.max(n - 1, 0), qs.size() - 1)).text();
     }
 
-    static Report report(Tailor.Facts f, Tailor.JobInfo job, List<Item> items, Function<String, String> llmJson) {
-        Integer readiness = readiness(items);
-        JsonNode r = llmJson == null ? null : readJson(llmJson.apply(reportPrompt(f, job, items)));
-        if (r != null && !r.isObject()) r = null;
+    /** One call at the end: rubric + one tip per answer, better versions of the two weakest, and the report. null if the model fails. */
+    record Evaluation(List<Item> items, Report report) {}
+
+    static Evaluation evaluate(Tailor.Facts f, Tailor.JobInfo job, List<Item> items, Function<String, String> llmJson) {
+        JsonNode r = llmJson == null ? null : readJson(llmJson.apply(evaluatePrompt(f, job, items)));
+        if (r == null || !r.isObject()) return null;
+        List<Item> out = new ArrayList<>(items);
+        JsonNode scores = r.get("scores");
+        if (scores != null && scores.isArray()) for (JsonNode s : scores) {
+            int q = s.path("q").asInt(0) - 1;
+            if (q < 0 || q >= out.size() || out.get(q).answer() == null) continue;
+            Feedback fb = parseFeedback(s.toString());
+            if (fb != null) out.set(q, withFeedback(out.get(q), fb));
+        }
+        JsonNode better = r.get("improved");
+        if (better != null && better.isArray()) for (JsonNode b : better) {
+            int q = b.path("q").asInt(0) - 1;
+            String text = text(b, "answer", "improved_answer", "text");
+            if (q < 0 || q >= out.size() || text == null || out.get(q).answer() == null) continue;
+            Item it = out.get(q);
+            Feedback old = it.feedback() != null ? it.feedback() : new Feedback(null, Map.of(), List.of(), null, List.of());
+            Feedback fb = checked(f, it, it.answer(), new Feedback(old.score(), old.rubric(), old.improvements(), cut(text.strip(), 1500), List.of()));
+            out.set(q, withFeedback(it, fb));
+        }
         List<Gap> gaps = new ArrayList<>();
-        JsonNode g = r == null ? null : r.get("gaps");
+        JsonNode g = r.get("gaps");
         if (g != null && g.isArray()) for (JsonNode x : g) {
             String area = x.isObject() ? text(x, "area", "topic") : x.isString() ? x.asString() : null;
             String detail = x.isObject() ? text(x, "detail", "vs_market", "why") : null;
             if (area != null && gaps.size() < 5) gaps.add(new Gap(cut(area, 120), detail == null ? null : cut(detail, 400)));
         }
-        String verdict = r == null ? null : text(r, "verdict", "summary");
-        if (verdict == null && gaps.isEmpty()) return templateReport(items, readiness);
-        return new Report(readiness, verdict == null ? null : cut(verdict, 600), strings(r, "strengths"), gaps, strings(r, "focus"), "AI");
+        String verdict = text(r, "verdict", "summary");
+        Integer readiness = readiness(out);
+        if (verdict == null && gaps.isEmpty() && readiness == null) return null;
+        return new Evaluation(out, new Report(readiness, verdict == null ? null : cut(verdict, 600), strings(r, "strengths"), gaps, strings(r, "focus"), "AI"));
     }
 
-    static String reportPrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> items) {
+    private static Item withFeedback(Item i, Feedback fb) { return new Item(i.type(), i.question(), i.answer(), fb, i.signals()); }
+
+    static String evaluatePrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> items) {
         StringBuilder t = new StringBuilder();
-        for (Item i : items) {
-            t.append("Q: ").append(i.question()).append("\nA: ").append(cut(i.answer(), 800));
-            if (i.feedback() != null && i.feedback().rubric() != null) t.append("\nScores (1-5): ").append(i.feedback().rubric());
+        for (int i = 0; i < items.size(); i++) {
+            Item it = items.get(i);
+            if (it.answer() == null) continue;
+            t.append(i + 1).append(". Q: ").append(cut(it.question(), 300)).append("\nA: ").append(cut(it.answer(), 900));
+            Signals s = it.signals();
+            if (s != null && (s.suspicious() || s.looksTense()))
+                t.append("\n(camera: ").append(s.suspicious() ? "eyes often off-screen, may have read notes" : "looked tense").append(')');
             t.append('\n');
         }
         return """
-                You are a hiring panel reviewing a finished mock interview for the role below.
-                Return JSON only: {"verdict":"...","strengths":["..."],"gaps":[{"area":"...","detail":"..."}],"focus":["..."]}
-                verdict: 2 sentences, honest: would this candidate likely clear this round today, and why.
-                strengths: up to 3, each tied to something they actually said.
-                gaps: up to 4 areas where they fall short of what interviewers expect today for this role at the candidate's level (the market standard for a candidate like them, e.g. a fresher is compared with strong freshers, not with seniors); detail = what a strong candidate at that level would have said or shown.
-                focus: up to 4 concrete things to practise before the real interview.
-                Use only the transcript and profile; never invent facts about the candidate.
-
+                You are a hiring panel scoring a finished spoken mock interview for the role below. Answers are speech-to-text: ignore filler words and transcription slips.
+                Return JSON only: {"scores":[{"q":1,"relevance":1-5,"specificity":1-5,"technical":1-5,"concision":1-5,"tip":"..."}],"improved":[{"q":1,"answer":"..."}],"verdict":"...","strengths":["..."],"gaps":[{"area":"...","detail":"..."}],"focus":["..."]}
+                scores: one per numbered answer. relevance = answers what was asked; specificity = concrete example, STAR for behavioural; technical = correct at the candidate's level (not more); concision = to the point. tip = the one most useful fix, max 20 words.
+                improved: the 2 weakest answers rewritten, first person, max 100 words each, ONLY facts from that answer and the profile; never invent numbers, employers, tools or results; write [add your own number here] where a number would help.
+                verdict: 2 honest sentences: would they likely clear this round today, and why.
+                strengths: up to 3, tied to what they said. gaps: up to 4 areas below what interviewers expect for this role AT THE CANDIDATE'S LEVEL (compare with strong peers at that level, not seniors); detail = what a strong candidate would have said. focus: up to 4 things to practise.
                 CANDIDATE LEVEL: %s
                 CANDIDATE:
                 %s
@@ -146,26 +204,13 @@ public final class Interview {
                 """.formatted(level(f), profileText(f), roleLine(job), cut(t.toString(), 9000));
     }
 
+    static Report policyReport() { return new Report(null, POLICY, List.of(), List.of(), List.of(), "POLICY"); }
+
     /** Mean rubric score of the scored answers as 0-100 (1 -> 0, 5 -> 100); null if none were scored. */
     static Integer readiness(List<Item> items) {
         DoubleSummaryStatistics st = items.stream().filter(i -> i.feedback() != null && i.feedback().rubric() != null)
                 .flatMap(i -> i.feedback().rubric().values().stream()).mapToDouble(x -> x).summaryStatistics();
         return st.getCount() == 0 ? null : (int) Math.round((st.getAverage() - 1) / 4 * 100);
-    }
-
-    /** No model: the two weakest rubric criteria become the gaps. */
-    static Report templateReport(List<Item> items, Integer readiness) {
-        Map<String, DoubleSummaryStatistics> by = new TreeMap<>();
-        for (Item i : items) if (i.feedback() != null && i.feedback().rubric() != null)
-            i.feedback().rubric().forEach((k, v) -> by.computeIfAbsent(k, x -> new DoubleSummaryStatistics()).accept(v));
-        Map<String, String> tip = Map.of(
-                "relevance", "Answer the exact question first, then add context.",
-                "specificity", "Use real examples with STAR (situation, task, action, result) and your own numbers.",
-                "technical", "Go one level deeper: design choices, trade-offs, what failed and why.",
-                "concision", "Keep answers under 2 minutes and lead with the point.");
-        List<Gap> gaps = by.entrySet().stream().sorted(Comparator.comparingDouble(e -> e.getValue().getAverage())).limit(2)
-                .map(e -> new Gap(e.getKey(), tip.get(e.getKey()))).toList();
-        return new Report(readiness, null, List.of(), gaps, List.of(), "TEMPLATE");
     }
 
     private static List<String> strings(JsonNode r, String key) {
@@ -310,7 +355,7 @@ public final class Interview {
         walk(root, (key, v) -> {
             String k = key.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
             if (k.contains("answer") || k.contains("rewrite")) { if (v.isString() && !v.asString().isBlank()) improved[0] = v.asString().strip(); }
-            else if (k.contains("improv") || k.contains("suggest") || k.contains("fix")) {
+            else if (k.contains("improv") || k.contains("suggest") || k.contains("fix") || k.equals("tip")) {
                 List<String> xs = new ArrayList<>();
                 if (v.isArray()) for (JsonNode x : v) xs.add(x.isString() ? x.asString() : x.toString());
                 else if (v.isString()) xs.addAll(Arrays.asList(v.asString().split("\\R")));
@@ -378,7 +423,7 @@ public final class Interview {
             "the project they described: their own contribution and why they built it that way",
             "a deeper follow-up on that project: a problem they hit, or what they would change",
             "a core CS fundamental relevant to the job: OOP or DBMS/SQL",
-            "a data structures and algorithms problem: ask them to explain their approach and its time and space complexity aloud",
+            "an easy-to-medium data structures problem (arrays, strings, hashing, sorting, linked lists or stacks; nothing graph-heavy): ask them to explain their approach and its time and space complexity aloud",
             "another CS fundamental: operating systems or computer networks",
             "a behavioural question about a team project, a deadline or a disagreement (STAR)",
             "HR: why this company and role, or where they see themselves growing");

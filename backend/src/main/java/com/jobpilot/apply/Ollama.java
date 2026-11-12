@@ -30,33 +30,38 @@ public class Ollama {
     private static final Logger log = LoggerFactory.getLogger(Ollama.class);
     private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     /** Longest legit reply is a ~350-word cover letter (~500 tokens) or the resume-import JSON (~1500). */
-    static final int MAX_TEXT_TOKENS = 900, MAX_JSON_TOKENS = 2000;
+    static final int MAX_TEXT_TOKENS = 900, MAX_JSON_TOKENS = 2000, MAX_SHORT_TOKENS = 300; // short: ~50 for the question + low-effort reasoning
 
     private final AppProperties props;
 
     Ollama(AppProperties props) { this.props = props; }
 
     public String generate(String prompt) {
-        return call(prompt, false);
+        return call(prompt, false, MAX_TEXT_TOKENS, 0.3);
+    }
+
+    /** A one-line reply (the live interviewer's next question): small token cap, a little randomness so retakes differ. */
+    public String generateShort(String prompt) {
+        return call(prompt, false, MAX_SHORT_TOKENS, 0.6);
     }
 
     /** Same, but the model is constrained to reply with valid JSON. */
     public String generateJson(String prompt) {
-        return call(prompt, true);
+        return call(prompt, true, MAX_JSON_TOKENS, 0);
     }
 
-    private String call(String prompt, boolean json) {
+    private String call(String prompt, boolean json, int maxTokens, double temperature) {
         // ponytail: an exhausted model is re-tried on every call (~100 ms per 429); add a cooldown if that latency shows
         for (AppProperties.Llm llm : props.llms()) {
-            String r = cloud(llm, prompt, json);
+            String r = cloud(llm, prompt, json, maxTokens, temperature);
             if (r != null && !r.isEmpty()) return r;
         }
-        return ollama(prompt, json);
+        return ollama(prompt, json, maxTokens, temperature);
     }
 
-    private String cloud(AppProperties.Llm llm, String prompt, boolean json) {
+    private String cloud(AppProperties.Llm llm, String prompt, boolean json, int maxTokens, double temperature) {
         ObjectNode body = FormReader.JSON.createObjectNode().put("model", llm.model())
-                .put("temperature", json ? 0 : 0.3).put("max_tokens", json ? MAX_JSON_TOKENS : MAX_TEXT_TOKENS);
+                .put("temperature", temperature).put("max_tokens", maxTokens);
         // gpt-oss and Gemini think by default and spend max_tokens on it (a cover letter came back cut off or
         // empty); "low" fixes them, and neither accepts "none". Qwen answers directly unless asked, where "low"
         // turns thinking ON (131 -> 575 tokens). Measured on Groq/Gemini 2026-11-10.
@@ -75,12 +80,12 @@ public class Ollama {
         return res.path("choices").path(0).path("message").path("content").asString("").strip();
     }
 
-    private String ollama(String prompt, boolean json) {
+    private String ollama(String prompt, boolean json, int maxTokens, double temperature) {
         ObjectNode body = FormReader.JSON.createObjectNode()
                 .put("model", props.ollamaModel()).put("prompt", prompt).put("stream", false)
                 .put("keep_alive", "30m"); // a cold load costs ~35s on this CPU; keep the model in RAM between calls
         if (json) body.put("format", "json");
-        body.putObject("options").put("temperature", json ? 0 : 0.3).put("num_predict", json ? MAX_JSON_TOKENS : MAX_TEXT_TOKENS);
+        body.putObject("options").put("temperature", temperature).put("num_predict", maxTokens);
         JsonNode res = post(props.ollamaUrl() + "/api/generate", body, null, 300);
         if (res == null) return null;
         log.info("LLM ollama/{} in={} out={} tokens, {} ms", props.ollamaModel(), res.path("prompt_eval_count").asInt(),

@@ -59,6 +59,7 @@ public class ResumeController {
                             @RequestParam("file") MultipartFile file,
                             @RequestParam(value = "label", required = false) String label) throws IOException {
         if (file.isEmpty()) throw new ApiException(HttpStatus.BAD_REQUEST, "EMPTY_FILE", "The file is empty");
+        if (file.getSize() > 5 * 1024 * 1024) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "FILE_TOO_LARGE", "Resumes can be up to 5 MB");
         if (resumes.countByUserId(userId) >= MAX_PER_USER)
             throw new ApiException(HttpStatus.CONFLICT, "RESUME_LIMIT", "You can keep up to " + MAX_PER_USER + " resumes. Delete one first.");
 

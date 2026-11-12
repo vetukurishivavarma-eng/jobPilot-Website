@@ -90,13 +90,20 @@ export type InterviewFeedback = {
   score: number | null; rubric: Partial<Record<'relevance' | 'specificity' | 'technical' | 'concision', number>>
   improvements: string[]; improvedAnswer: string | null; warnings: string[]
 }
-export type InterviewItem = { type: 'BEHAVIOURAL' | 'TECHNICAL' | 'ROLE' | 'INTRO' | 'FOLLOW_UP'; question: string; answer: string | null; feedback: InterviewFeedback | null }
+/** What the camera saw during one answer, as % of frames (on-device; only these numbers leave the device). */
+export type Signals = { seconds?: number; away?: number; eyesOff?: number; tense?: number; smile?: number; pasted?: boolean }
+export type InterviewItem = { type: 'BEHAVIOURAL' | 'TECHNICAL' | 'ROLE' | 'INTRO' | 'FOLLOW_UP' | 'PROBE'; question: string; answer: string | null; feedback: InterviewFeedback | null; signals?: Signals | null }
 export type InterviewSession = {
-  id: string; jobId: string | null; title: string; source: 'AI' | 'TEMPLATE'; mode: 'SET' | 'LIVE'; items: InterviewItem[]; report: InterviewReport | null; createdAt: string; updatedAt: string
+  id: string; jobId: string | null; title: string; source: 'AI' | 'TEMPLATE'; mode: 'SET' | 'LIVE'; items: InterviewItem[]; report: InterviewReport | null;
+  /** phone seen on camera (1 = warned); ended POLICY = stopped; done = all questions answered; recording deleted at recordingExpiresAt */
+  violations: number; ended: 'POLICY' | null; done: boolean; recordingExpiresAt: string | null; createdAt: string; updatedAt: string
 }
+export type BillingPlan = { id: 'FIRST' | 'SINGLE' | 'WEEKLY'; label: string; rupees: number; interviews: number; days: number | null }
+/** enabled = payments on; credits = live interviews left. Off: live interviews are free. */
+export type Billing = { enabled: boolean; credits: number; plans: BillingPlan[] }
 export type InterviewSummary = { id: string; jobId: string | null; title: string; mode: 'SET' | 'LIVE'; answered: number; total: number; averageScore: number | null; readiness: number | null; createdAt: string }
 /** readiness 0-100; gaps = where the answers fall short of what interviewers expect at this level. */
-export type InterviewReport = { readiness: number | null; verdict: string | null; strengths: string[]; gaps: { area: string; detail: string | null }[]; focus: string[]; source: 'AI' | 'TEMPLATE' }
+export type InterviewReport = { readiness: number | null; verdict: string | null; strengths: string[]; gaps: { area: string; detail: string | null }[]; focus: string[]; source: 'AI' | 'TEMPLATE' | 'POLICY' }
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fields?: Record<string, string>) {
@@ -119,6 +126,7 @@ export function createApi(cfg: ApiConfig) {
     if (t) headers.Authorization = `Bearer ${t}`
     let payload: BodyInit | undefined
     if (body instanceof FormData) payload = body
+    else if (body instanceof Blob) { payload = body; headers['Content-Type'] = body.type || 'application/octet-stream' }
     else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body) }
 
     const res = await fetch(`${cfg.baseUrl()}/api${path}`, { method, headers, body: payload })
@@ -189,8 +197,15 @@ export function createApi(cfg: ApiConfig) {
   getInterview: (id: string) => request<InterviewSession>('GET', `/interview/sessions/${id}`),
   /** Pass a jobId from the user's job list, or a role to practise for. */
   startInterview: (s: ({ jobId: string } | { role: string }) & { live?: boolean }) => request<InterviewSession>('POST', '/interview/sessions', s),
-  answerInterview: (id: string, index: number, answer: string) =>
-    request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}`, { answer }),
+  answerInterviewAudio: (id: string, index: number, fd: FormData) => request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}/audio`, fd),
+  interviewViolation: (id: string, kind: 'PHONE') => request<InterviewSession>('POST', `/interview/sessions/${id}/violations`, { kind }),
+  interviewReport: (id: string) => request<InterviewSession>('POST', `/interview/sessions/${id}/report`),
+  uploadRecording: (id: string, video: Blob) => request<InterviewSession>('PUT', `/interview/sessions/${id}/recording`, video),
+  recordingFile: (id: string) => file(`/interview/sessions/${id}/recording`),
+  billing: () => request<Billing>('GET', '/billing'),
+  buy: (plan: BillingPlan['id']) => request<{ purchaseId: string; payUrl: string }>('POST', '/billing/orders', { plan }),
+  answerInterview: (id: string, index: number, answer: string, signals?: Signals) =>
+    request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}`, { answer, signals }),
   deleteInterview: (id: string) => request<void>('DELETE', `/interview/sessions/${id}`),
     /** Authenticated GET for files (PDF, DOCX, screenshot); each client turns the Response into a download or image. */
     file,

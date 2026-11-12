@@ -15,8 +15,8 @@ spring:
         size: 2   # discovery and auto mode must not wait on each other
   servlet:
     multipart:
-      max-file-size: 5MB
-      max-request-size: 6MB
+      max-file-size: 10MB  # spoken answer clips (resumes check their own 5 MB cap)
+      max-request-size: 11MB
 
 server:
   port: ${PORT:8080}
@@ -60,5 +60,12 @@ jobpilot:
   digest-cron: ${DIGEST_CRON:0 0 9 * * *}
   # Public address of this API, for links in emails sent without a request (digest unsubscribe).
   public-url: ${PUBLIC_URL:https://jobpilot-api-gpa6.onrender.com}
+  # Spoken interview answers -> text (Whisper; OpenAI-compatible). Defaults to Groq with the LLM key.
+  stt-url: ${STT_URL:https://api.groq.com/openai/v1}
+  stt-api-key: ${STT_API_KEY:${LLM_API_KEY:}}
+  stt-model: ${STT_MODEL:whisper-large-v3-turbo}
+  # Paid live interviews (Razorpay). Both unset = billing off, live interviews free.
+  razorpay-key-id: ${RAZORPAY_KEY_ID:}
+  razorpay-key-secret: ${RAZORPAY_KEY_SECRET:}
   # Auto mode runs for users who switched it on (Spring cron; "-" disables).
   auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}

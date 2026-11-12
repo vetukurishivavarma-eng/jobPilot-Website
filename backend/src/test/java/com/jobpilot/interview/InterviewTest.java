@@ -144,62 +144,104 @@ class InterviewTest {
         mvc().perform(delete("/api/interview/sessions/" + s).header("Authorization", auth)).andExpect(status().isNoContent());
     }
 
+    static Interview.Content after(String... answers) {
+        List<Interview.Item> items = new ArrayList<>();
+        items.add(new Interview.Item("INTRO", Interview.INTRO, answers[0], null));
+        for (int i = 1; i < answers.length; i++) items.add(new Interview.Item("FOLLOW_UP", "Q" + i + " about something specific?", answers[i], null));
+        return new Interview.Content("AI", items, "LIVE", null, 0, null);
+    }
+
     @Test
-    void liveInterviewFollowsUpOnWhatTheCandidateSaid() {
-        Interview.Item intro = Interview.liveStart().items().get(0);
+    void nextQuestionIsOneShortCallOnWhatTheyJustSaid() {
         String answer = "I built a ledger service in Java at Acme Pay that handles 2M transactions a day.";
         List<String> prompts = new ArrayList<>();
-        Interview.Turn t = Interview.liveTurn(FACTS, JOB, List.of(), intro, answer, false, p -> {
+        Interview.Item next = Interview.next(FACTS, JOB, after(answer), p -> {
             prompts.add(p);
-            return "{\"relevance\":4,\"specificity\":3,\"technical\":4,\"concision\":5,\"improvements\":[\"Say your part\"],"
-                    + "\"improved_answer\":\"I built a ledger in Java.\",\"next_question\":\"How did your ledger stay consistent when a Kafka consumer crashed mid-batch?\"}";
+            return "Next question: \"How did your ledger stay consistent when a Kafka consumer crashed mid-batch?\"";
         });
-        assertTrue(prompts.get(0).contains(answer) && prompts.get(0).contains("next_question"));
-        assertEquals(4, t.feedback().score());
-        assertTrue(t.next().contains("ledger"));
-
-        // unreadable reply: still scored nothing, but the next question falls back to the standard set
-        Interview.Turn bad = Interview.liveTurn(FACTS, JOB, List.of(), intro, answer, false, p -> "{\"relevance\":3}");
-        assertNotNull(bad.next());
-        // last question: no follow-up asked
-        Interview.Turn last = Interview.liveTurn(FACTS, JOB, List.of(), intro, answer, true, p -> {
-            assertFalse(p.contains("next_question"));
-            return "{\"relevance\":3}";
-        });
-        assertNull(last.next());
+        assertEquals("How did your ledger stay consistent when a Kafka consumer crashed mid-batch?", next.question()); // label + quotes stripped
+        String p = prompts.get(0);
+        assertTrue(p.contains(answer) && p.contains("ONLY the next question") && !p.contains("JSON"));
+        // token budget: old answers are not resent, only the latest
+        Interview.Item later = Interview.next(FACTS, JOB, after("OLD ANSWER TEXT", "second", "latest answer here"), q -> { prompts.add(q); return "Tell me about how you tested that service?"; });
+        assertFalse(prompts.get(1).contains("OLD ANSWER TEXT"));
+        assertTrue(prompts.get(1).contains("latest answer here"));
+        assertNotNull(later);
+        // model down -> standard question, the interview goes on
+        assertNotNull(Interview.next(FACTS, JOB, after(answer), q -> null).question());
+        // the closing HR question is a template: no model call
+        String[] eight = new String[8];
+        Arrays.fill(eight, "an answer");
+        Interview.Content seven = after(Arrays.copyOf(eight, 7));
+        Interview.Item closing = Interview.next(FACTS, JOB, seven, q -> { throw new AssertionError("no call for the closing question"); });
+        assertTrue(closing.question().contains("Groww"));
+        assertNull(Interview.next(FACTS, JOB, after(eight), q -> "x")); // plan done
     }
 
     @Test
-    void reportReadinessAndFallback() {
-        Interview.Feedback low = new Interview.Feedback(2, Map.of("relevance", 3, "specificity", 1, "technical", 2, "concision", 5), List.of(), null, List.of());
-        List<Interview.Item> items = List.of(new Interview.Item("INTRO", "q", "a", low), new Interview.Item("FOLLOW_UP", "q2", "a2", low));
-        assertEquals(44, Interview.readiness(items)); // mean 2.75 -> (2.75-1)/4
-        Interview.Report fb = Interview.report(FACTS, JOB, items, p -> "not json");
-        assertEquals("TEMPLATE", fb.source());
-        assertEquals("specificity", fb.gaps().get(0).area()); // weakest first
-        Interview.Report ai = Interview.report(FACTS, JOB, items, p ->
-                "{\"verdict\":\"Not yet.\",\"strengths\":[\"Clear\"],\"gaps\":[{\"area\":\"System design\",\"detail\":\"Explain trade-offs\"}],\"focus\":[\"STAR\"]}");
-        assertEquals("AI", ai.source());
-        assertEquals("System design", ai.gaps().get(0).area());
-        assertEquals(44, ai.readiness());
+    void readingLikeAnswerGetsAProbeAndTenseGetsWarmth() {
+        Interview.Content c = after("I built a ledger.");
+        List<Interview.Item> items = new ArrayList<>(c.items());
+        Interview.Signals reading = new Interview.Signals(40, 0, 55, 0, 0, false);
+        items.set(0, new Interview.Item("INTRO", Interview.INTRO, "I built a ledger.", null, reading));
+        Interview.Item probe = Interview.next(FACTS, JOB, new Interview.Content("AI", items, "LIVE", null, 0, null), q -> { throw new AssertionError("probe is a template"); });
+        assertEquals("PROBE", probe.type());
+        // the probe doesn't use up a planned question
+        items.add(new Interview.Item("PROBE", Interview.PROBE, "No notes, sorry.", null, null));
+        assertEquals(1, new Interview.Content("AI", items, "LIVE", null, 0, null).planAnswered());
+        // short answers and pasted text
+        assertFalse(new Interview.Signals(8, 0, 90, 0, 0, false).suspicious());
+        assertTrue(new Interview.Signals(5, 0, 0, 0, 0, true).suspicious());
+        // tense -> the next question opens warmly
+        items = new ArrayList<>(c.items());
+        items.set(0, new Interview.Item("INTRO", Interview.INTRO, "um I built a ledger", null, new Interview.Signals(30, 0, 0, 60, 0, false)));
+        assertTrue(Interview.nextPrompt(FACTS, JOB, items, 1).contains("looks tense"));
     }
 
     @Test
-    void liveSessionAnswersInOrderOnly() throws Exception {
+    void oneEvaluationCallScoresEverythingAndWritesTheReport() {
+        Interview.Content c = after("I built a ledger in Java.", "Kafka with idempotency keys.");
+        Interview.Evaluation ev = Interview.evaluate(FACTS, JOB, c.items(), p -> """
+                {"scores":[{"q":1,"relevance":5,"specificity":3,"technical":4,"concision":4,"tip":"Say your own part."},
+                           {"q":2,"relevance":2,"specificity":1,"technical":2,"concision":3,"tip":"Explain how the keys are stored."}],
+                 "improved":[{"q":2,"answer":"I used Kafka with idempotency keys and cut duplicates by 90%."}],
+                 "verdict":"Close.","strengths":["Clear"],"gaps":[{"area":"Kafka depth","detail":"Explain offsets"}],"focus":["STAR"]}""");
+        assertEquals(4, ev.items().get(0).feedback().score());
+        assertEquals(List.of("Say your own part."), ev.items().get(0).feedback().improvements());
+        assertTrue(ev.items().get(1).feedback().improvedAnswer().contains(Interview.ADD_NUMBER), "invented 90% replaced");
+        assertEquals("Kafka depth", ev.report().gaps().get(0).area());
+        assertEquals(50, ev.report().readiness()); // mean 3.0 -> (3-1)/4
+        assertNull(Interview.evaluate(FACTS, JOB, c.items(), p -> "not json"));
+    }
+
+    @Test
+    void liveSessionFlowViolationsAndPolicyStop() throws Exception {
         String auth = register();
         String body = mvc().perform(post("/api/interview/sessions").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"role\":\"Backend Engineer\",\"live\":true}")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.mode").value("LIVE")).andExpect(jsonPath("$.items.length()").value(1))
                 .andReturn().getResponse().getContentAsString();
         String id = Interview.JSON.readTree(body).get("id").asString();
-        // a later question can't be answered first
-        mvc().perform(post("/api/interview/sessions/" + id + "/answers/3").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+        String base = "/api/interview/sessions/" + id;
+        mvc().perform(post(base + "/answers/3").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"answer\":\"x\"}")).andExpect(status().isNotFound());
-        // no model in tests -> 503, the question stays open
-        mvc().perform(post("/api/interview/sessions/" + id + "/answers/0").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"answer\":\"I build payment systems.\"}")).andExpect(status().isServiceUnavailable());
+        // no model in tests -> the standard next question; signals are stored with the answer
+        mvc().perform(post(base + "/answers/0").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"answer\":\"I build payment systems.\",\"signals\":{\"seconds\":20,\"eyesOff\":10,\"tense\":5}}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].signals.eyesOff").value(10)).andExpect(jsonPath("$.done").value(false));
+        mvc().perform(post(base + "/answers/0").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"answer\":\"again\"}")).andExpect(status().isConflict());
+        mvc().perform(post(base + "/report").header("Authorization", auth)).andExpect(status().isConflict());
+        // phone on camera: warned once, stopped the second time, and the server refuses further answers
+        mvc().perform(post(base + "/violations").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("{\"kind\":\"PHONE\"}"))
+                .andExpect(jsonPath("$.violations").value(1)).andExpect(jsonPath("$.ended").doesNotExist());
+        mvc().perform(post(base + "/violations").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("{\"kind\":\"PHONE\"}"))
+                .andExpect(jsonPath("$.ended").value("POLICY")).andExpect(jsonPath("$.report.source").value("POLICY"));
+        mvc().perform(post(base + "/answers/1").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"answer\":\"x\"}")).andExpect(status().isConflict());
         mvc().perform(get("/api/interview/sessions").header("Authorization", auth))
-                .andExpect(jsonPath("$[0].mode").value("LIVE")).andExpect(jsonPath("$[0].total").value(8));
+                .andExpect(jsonPath("$[0].mode").value("LIVE")).andExpect(jsonPath("$[0].total").value(8)).andExpect(jsonPath("$[0].answered").value(1));
         // the phone's eye-contact page loads without a token
         mvc().perform(get("/eye.html")).andExpect(status().isOk());
         // the web app is served from this origin: its pages are public, the API is not
@@ -213,16 +255,47 @@ class InterviewTest {
         Tailor.Facts fresher = new Tailor.Facts("Ravi K", "r@example.com", null, "Hyderabad", null, "CSE graduate", null, "0",
                 null, List.of("Java", "SQL"), Set.of(), List.of(), List.of(),
                 "PROJECTS: Library management system in Java and MySQL with JWT login.");
-        String p = Interview.livePrompt(fresher, JOB, List.of(), Interview.liveStart().items().get(0), "I built a library app.", false);
+        String p = Interview.nextPrompt(fresher, JOB, after("I built a library app.").items(), 1);
         assertTrue(p.contains("FRESHER") && p.contains("CS fundamentals"));
         assertTrue(p.contains("Library management system"), "a fresher's projects reach the interviewer");
-        assertTrue(Interview.reportPrompt(fresher, JOB, List.of()).contains("FRESHER"));
-        assertTrue(Interview.livePrompt(FACTS, JOB, List.of(), Interview.liveStart().items().get(0), "x", false).contains("MID-LEVEL")); // 4 years
+        assertTrue(Interview.evaluatePrompt(fresher, JOB, after("x").items()).contains("FRESHER"));
+        assertTrue(Interview.nextPrompt(FACTS, JOB, after("x").items(), 1).contains("MID-LEVEL")); // 4 years
         assertTrue(Interview.questionsPrompt(fresher, JOB).contains("FRESHER"));
         // each slot has a fixed focus, so a fresher gets fundamentals, DSA and HR, not 7 questions on one project
-        List<Interview.Item> two = List.of(new Interview.Item("INTRO", "q", "a", null), new Interview.Item("FOLLOW_UP", "q", "a", null));
-        assertTrue(Interview.livePrompt(fresher, JOB, two, new Interview.Item("FOLLOW_UP", "q", null, null), "a", false).contains("OOP or DBMS"));
+        assertTrue(Interview.nextPrompt(fresher, JOB, after("a", "b").items(), 3).contains("OOP or DBMS"));
+        assertTrue(Interview.focus(fresher, 4).contains("nothing graph-heavy"));
         assertTrue(Interview.focus(fresher, 7).startsWith("HR"));
         assertTrue(Interview.focus(FACTS, 3).startsWith("system design"));
+    }
+
+    @Autowired InterviewRecordingRepository recordings;
+
+    @Test
+    void recordingDownloadableForAnHourThenGone() throws Exception {
+        String auth = register();
+        String id = Interview.JSON.readTree(mvc().perform(post("/api/interview/sessions").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"Backend Engineer\",\"live\":true}")).andReturn().getResponse().getContentAsString()).get("id").asString();
+        String base = "/api/interview/sessions/" + id;
+        byte[] video = "fake-webm-bytes".getBytes();
+        mvc().perform(put(base + "/recording").header("Authorization", auth).contentType("video/webm").content(video))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.recordingExpiresAt").exists());
+        mvc().perform(put(base + "/recording").header("Authorization", auth).contentType("text/html").content(video))
+                .andExpect(status().isUnsupportedMediaType());
+        mvc().perform(get(base + "/recording").header("Authorization", auth))
+                .andExpect(status().isOk()).andExpect(content().bytes(video));
+        mvc().perform(get(base + "/recording").header("Authorization", register())).andExpect(status().isNotFound()); // someone else's
+
+        // an hour later the purge removes it
+        InterviewRecording r = recordings.findById(UUID.fromString(id)).orElseThrow();
+        r.createdAt = java.time.Instant.now().minus(java.time.Duration.ofMinutes(61));
+        recordings.save(r);
+        mvc().perform(get(base + "/recording").header("Authorization", auth)).andExpect(status().isGone());
+        recordings.deleteOlderThan(java.time.Instant.now().minus(InterviewRecording.TTL));
+        assertTrue(recordings.findById(UUID.fromString(id)).isEmpty());
+        mvc().perform(get(base).header("Authorization", auth)).andExpect(jsonPath("$.recordingExpiresAt").doesNotExist());
+
+        // spoken answer with no speech-to-text configured -> 503, the question stays open
+        mvc().perform(multipart(base + "/answers/0/audio").file(new org.springframework.mock.web.MockMultipartFile("audio", "a.webm", "audio/webm", new byte[100]))
+                .header("Authorization", auth)).andExpect(status().isServiceUnavailable());
     }
 }
