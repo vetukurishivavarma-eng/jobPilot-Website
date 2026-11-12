@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { confirmDialog } from '../dialog'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, ApiError, profileChanged, type Resume } from '../api'
 
@@ -104,7 +105,7 @@ export default function ResumesPage() {
                   <button className="btn-ghost" onClick={() => togglePreview(r)}>{preview?.id === r.id ? 'Hide text' : 'View text'}</button>
                   <button className="btn-ghost" onClick={() => api.downloadResume(r).catch(fail)}>Download</button>
                   <button className="btn-ghost hover:border-danger hover:text-danger"
-                    onClick={() => confirmDelete(r) && act(() => api.deleteResume(r.id))}>Delete</button>
+                    onClick={async () => { if (await confirmDelete(r)) act(() => api.deleteResume(r.id)) }}>Delete</button>
                 </div>
               </div>
               {preview?.id === r.id && (
@@ -120,4 +121,4 @@ export default function ResumesPage() {
   )
 }
 
-const confirmDelete = (r: Resume) => window.confirm(`Delete "${r.label}"? This cannot be undone.`)
+const confirmDelete = (r: Resume) => confirmDialog(`Delete "${r.label}"?`, { message: 'This cannot be undone.', ok: 'Delete', danger: true })

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from '../dialog'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError, STAGES, stageIsTerminal, type Application, type ApplicationStatus, type AutoSettings, type FormField, type Stage } from '../api'
 
@@ -218,7 +219,7 @@ export function ApplicationPage() {
   }
 
   async function remove() {
-    if (!window.confirm('Delete this application draft? Answers you gave stay remembered.')) return
+    if (!await confirmDialog('Delete this application draft?', { message: 'Answers you gave stay remembered.', ok: 'Delete', danger: true })) return
     try { await api.deleteApplication(a!.id); nav('/applications') } catch (e) { setError(msg(e)) }
   }
 

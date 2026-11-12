@@ -13,6 +13,7 @@ import ApplicationsPage, { ApplicationPage } from './pages/ApplicationsPage'
 import InterviewPage, { InterviewSessionPage } from './pages/InterviewPage'
 import InsightsPage from './pages/InsightsPage'
 import LivePage from './pages/LivePage'
+import { DialogHost } from './dialog'
 
 // The phone app opens /live/:id in a WebView with its sign-in token in the URL fragment (never sent to the server).
 const handoff = /[#&]t=([^&]+)/.exec(location.hash)
@@ -51,6 +52,7 @@ function App() {
           <Route path="*" element={<Navigate to={user ? '/jobs' : '/login'} />} />
         </Routes>
       </BrowserRouter>
+      <DialogHost />
     </SessionCtx.Provider>
   )
 }
