@@ -219,5 +219,10 @@ class InterviewTest {
         assertTrue(Interview.reportPrompt(fresher, JOB, List.of()).contains("FRESHER"));
         assertTrue(Interview.livePrompt(FACTS, JOB, List.of(), Interview.liveStart().items().get(0), "x", false).contains("MID-LEVEL")); // 4 years
         assertTrue(Interview.questionsPrompt(fresher, JOB).contains("FRESHER"));
+        // each slot has a fixed focus, so a fresher gets fundamentals, DSA and HR, not 7 questions on one project
+        List<Interview.Item> two = List.of(new Interview.Item("INTRO", "q", "a", null), new Interview.Item("FOLLOW_UP", "q", "a", null));
+        assertTrue(Interview.livePrompt(fresher, JOB, two, new Interview.Item("FOLLOW_UP", "q", null, null), "a", false).contains("OOP or DBMS"));
+        assertTrue(Interview.focus(fresher, 7).startsWith("HR"));
+        assertTrue(Interview.focus(FACTS, 3).startsWith("system design"));
     }
 }

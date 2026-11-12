@@ -66,8 +66,9 @@ public final class Interview {
         StringBuilder t = new StringBuilder();
         for (Item i : done) t.append("Q: ").append(i.question()).append("\nA: ").append(cut(i.answer(), 1200)).append('\n');
         String ask = last ? "" : """
-                next_question: ONE question, as a real interviewer would ask a candidate at this level (see CANDIDATE LEVEL: cover what it says interviewers test, across the interview). Dig into the projects, tools and decisions the candidate actually mentioned (why that design, what broke, trade-offs, how it scaled, what they would change) and test the skills the job needs. If an answer was vague, press for specifics once, then move on. Never ask more than 2 questions in a row on the same topic: after that switch to another project, another skill the job needs, or a behavioural question. Include at least one behavioural question in the interview. Never repeat or rephrase an earlier question. One or two sentences, no answer.
-                """;
+                next_question: ONE question, as a real interviewer would ask a candidate at this level. It MUST be about: %s
+                Tie it to what the candidate actually said or to the skills the job needs where that fits the focus. Never repeat or rephrase an earlier question. One or two sentences, no answer.
+                """.formatted(focus(f, done.size() + 1));
         return """
                 You are an interviewer running a realistic interview for the role below. Interview the way this company's interviewers typically do for this role and level, from what is publicly known about their process; if you don't know the company, run a standard interview for this level. Never claim to have seen real interview reports.
                 Score the candidate's latest answer%s.
@@ -369,6 +370,41 @@ public final class Interview {
      * What interviewers in India actually test at the candidate's level. JobPilot's users are 22-30: freshers to mid-level.
      * Unknown years = treated as early-career.
      */
+    /**
+     * The interview plan: what question n (0 = the opening) covers, per level. Fixed in code because the model,
+     * told only "max 2 per topic", spent 7 questions on one project and skipped fundamentals and HR (live test 2026-11-12).
+     */
+    static final List<String> FRESHER_PLAN = List.of("opening",
+            "the project they described: their own contribution and why they built it that way",
+            "a deeper follow-up on that project: a problem they hit, or what they would change",
+            "a core CS fundamental relevant to the job: OOP or DBMS/SQL",
+            "a data structures and algorithms problem: ask them to explain their approach and its time and space complexity aloud",
+            "another CS fundamental: operating systems or computer networks",
+            "a behavioural question about a team project, a deadline or a disagreement (STAR)",
+            "HR: why this company and role, or where they see themselves growing");
+    static final List<String> EARLY_PLAN = List.of("opening",
+            "the work or project they described: their own contribution and the design choices",
+            "a follow-up on it: a bug or production issue they debugged, or how they tested it",
+            "a core fundamental the job relies on (DBMS/SQL, OOP, concurrency, or the main framework's internals)",
+            "a data structures and algorithms problem: approach and complexity, explained aloud",
+            "light design: how they would design a small feature or module from the job, with trade-offs",
+            "a behavioural question about teamwork, feedback or a missed deadline (STAR)",
+            "why this company and role, and what they want to learn next");
+    static final List<String> MID_PLAN = List.of("opening",
+            "the system or feature they described: architecture and the trade-offs they made",
+            "a follow-up on it: a production incident, performance or scaling problem and how they handled it",
+            "system design: design a service or feature relevant to the job (components, data, scaling, failure handling)",
+            "a deeper design trade-off: consistency vs availability, caching, queues, or data modelling",
+            "a core technical fundamental the job relies on, at depth (concurrency, database internals, or the main framework)",
+            "a behavioural question about ownership, mentoring a junior, or pushing back on a decision (STAR)",
+            "why this company and role, and how they would add value in the first months");
+
+    static String focus(Tailor.Facts f, int n) {
+        Double y = years(f);
+        List<String> plan = y != null && y < 1 ? FRESHER_PLAN : y == null || y < 3 ? EARLY_PLAN : MID_PLAN;
+        return plan.get(Math.min(Math.max(n, 1), plan.size() - 1));
+    }
+
     static String level(Tailor.Facts f) {
         Double y = years(f);
         if (y != null && y < 1) return """
