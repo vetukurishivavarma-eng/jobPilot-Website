@@ -90,11 +90,13 @@ export type InterviewFeedback = {
   score: number | null; rubric: Partial<Record<'relevance' | 'specificity' | 'technical' | 'concision', number>>
   improvements: string[]; improvedAnswer: string | null; warnings: string[]
 }
-export type InterviewItem = { type: 'BEHAVIOURAL' | 'TECHNICAL' | 'ROLE'; question: string; answer: string | null; feedback: InterviewFeedback | null }
+export type InterviewItem = { type: 'BEHAVIOURAL' | 'TECHNICAL' | 'ROLE' | 'INTRO' | 'FOLLOW_UP'; question: string; answer: string | null; feedback: InterviewFeedback | null }
 export type InterviewSession = {
-  id: string; jobId: string | null; title: string; source: 'AI' | 'TEMPLATE'; items: InterviewItem[]; createdAt: string; updatedAt: string
+  id: string; jobId: string | null; title: string; source: 'AI' | 'TEMPLATE'; mode: 'SET' | 'LIVE'; items: InterviewItem[]; report: InterviewReport | null; createdAt: string; updatedAt: string
 }
-export type InterviewSummary = { id: string; jobId: string | null; title: string; answered: number; total: number; averageScore: number | null; createdAt: string }
+export type InterviewSummary = { id: string; jobId: string | null; title: string; mode: 'SET' | 'LIVE'; answered: number; total: number; averageScore: number | null; readiness: number | null; createdAt: string }
+/** readiness 0-100; gaps = where the answers fall short of what interviewers expect at this level. */
+export type InterviewReport = { readiness: number | null; verdict: string | null; strengths: string[]; gaps: { area: string; detail: string | null }[]; focus: string[]; source: 'AI' | 'TEMPLATE' }
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fields?: Record<string, string>) {
@@ -186,7 +188,7 @@ export function createApi(cfg: ApiConfig) {
   listInterviews: () => request<InterviewSummary[]>('GET', '/interview/sessions'),
   getInterview: (id: string) => request<InterviewSession>('GET', `/interview/sessions/${id}`),
   /** Pass a jobId from the user's job list, or a role to practise for. */
-  startInterview: (s: { jobId: string } | { role: string }) => request<InterviewSession>('POST', '/interview/sessions', s),
+  startInterview: (s: ({ jobId: string } | { role: string }) & { live?: boolean }) => request<InterviewSession>('POST', '/interview/sessions', s),
   answerInterview: (id: string, index: number, answer: string) =>
     request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}`, { answer }),
   deleteInterview: (id: string) => request<void>('DELETE', `/interview/sessions/${id}`),
@@ -200,7 +202,8 @@ export function createApi(cfg: ApiConfig) {
  * What's still missing for a 100% profile. Jobs and Applications stay locked until this is empty.
  * GitHub and portfolio links are optional; work experience is required only with 1+ years.
  */
-export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[]; percent: number } {
+/** missing = what blocks jobs (matching needs only these); later = asked when an application form needs it. */
+export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[]; later: string[]; percent: number } {
   const has = (s: string | null | undefined) => !!s && s.trim() !== ''
   const checks: [string, boolean][] = [
     ['Resume', resumes.length > 0],
@@ -220,7 +223,28 @@ export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[];
     ['Work authorization', has(p.workAuthorization)],
     ['LinkedIn URL', has(p.linkedinUrl)],
   ]
-  const missing = checks.filter(([, ok]) => !ok).map(([name]) => name)
-  return { missing, percent: Math.round(100 * (checks.length - missing.length) / checks.length) }
+  const gaps = checks.filter(([, ok]) => !ok).map(([name]) => name)
+  const blocking = ['Resume', 'Skills', 'Desired roles', 'Preferred locations']
+  return {
+    missing: gaps.filter(g => blocking.includes(g)),
+    later: gaps.filter(g => !blocking.includes(g)),
+    percent: Math.round(100 * (checks.length - gaps.length) / checks.length),
+  }
 }
 
+
+/**
+ * Best bets: jobs you've done a live mock interview for, ranked by fit = average of the job match score and your
+ * interview readiness for that job. Latest finished interview per job counts. Not a promise of an offer.
+ */
+export type BestBet = { job: Job; readiness: number; fit: number }
+export async function bestBets(api: Pick<ReturnType<typeof createApi>, 'listInterviews' | 'getJob'>, limit = 5): Promise<BestBet[]> {
+  const latest = new Map<string, number>()
+  for (const s of await api.listInterviews()) // newest first
+    if (s.mode === 'LIVE' && s.jobId && s.readiness != null && !latest.has(s.jobId)) latest.set(s.jobId, s.readiness)
+  const bets = await Promise.all([...latest].map(([id, readiness]) => api.getJob(id).then(job => {
+    if (job.closedAt || job.status === 'DISMISSED') return null
+    return { job, readiness, fit: Math.round(((job.match?.score ?? readiness) + readiness) / 2) }
+  }).catch(() => null)))
+  return bets.filter((b): b is BestBet => !!b).sort((a, b) => b.fit - a.fit).slice(0, limit)
+}

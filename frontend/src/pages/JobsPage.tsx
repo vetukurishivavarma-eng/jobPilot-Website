@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, ApiError, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult, type DiscoveryProgress } from '../api'
+import { api, ApiError, bestBets, type BestBet, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult, type DiscoveryProgress } from '../api'
 
 const TABS = [['ACTIVE', 'Inbox'], ['SAVED', 'Saved'], ['DISMISSED', 'Dismissed'], ['ALL', 'All']] as const
 const SOURCE: Record<Job['source'], string> = { greenhouse: 'Greenhouse', lever: 'Lever', workday: 'Workday', smartrecruiters: 'SmartRecruiters', ashby: 'Ashby', adzuna: 'Adzuna', web: 'Web', manual: 'Added by you' }
@@ -36,6 +36,8 @@ export default function JobsPage() {
   const [report, setReport] = useState<SourceResult[] | null>(null)
   const running = !!progress?.running
   const [adding, setAdding] = useState(false)
+  const [bets, setBets] = useState<BestBet[]>([])
+  useEffect(() => { bestBets(api).then(setBets).catch(() => {}) }, [])
 
   const refresh = () => api.listJobs({ status, q: query, includeClosed, page, sort }).then(setData).catch(e => setError(msg(e)))
   useEffect(() => { refresh() }, [status, query, includeClosed, page, sort])
@@ -80,6 +82,7 @@ export default function JobsPage() {
         <button className="btn" onClick={find} disabled={running}>{running ? (progress!.total ? `Reading ${progress!.done}/${progress!.total} companies…` : 'Starting…') : 'Find jobs now'}</button>
       </div>
 
+      <BestBets bets={bets} />
       {report && <Report report={report} onClose={() => setReport(null)} />}
       {adding && <AddJob onAdded={() => { setAdding(false); setStatus('ACTIVE'); setPage(0); refresh() }} />}
       {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</p>}
@@ -328,5 +331,22 @@ function ScoreBadge({ score }: { score: number }) {
       <span className="font-display text-base font-bold leading-none">{score}</span>
       <span className="text-[9px] uppercase tracking-wide">match</span>
     </div>
+  )
+}
+
+/** Jobs you've mock-interviewed for, ranked by match + interview readiness. */
+function BestBets({ bets }: { bets: BestBet[] }) {
+  return (
+    <section className="card space-y-3">
+      <h2 className="font-display text-lg font-bold">Best bets</h2>
+      {bets.length === 0
+        ? <p className="text-sm text-muted">Do a <Link to="/interview" className="underline">live mock interview</Link> for a job and your strongest shots show up here, ranked by match + how you interviewed.</p>
+        : <ul className="divide-y divide-line">{bets.map(b => (
+          <li key={b.job.id} className="flex items-center gap-3 py-2">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-signal-soft text-sm font-bold text-signal">{b.fit}</span>
+            <Link to={`/tailor/${b.job.id}`} className="mr-auto font-medium hover:text-signal">{b.job.title} <span className="text-muted">· {b.job.company}</span></Link>
+            <span className="text-xs text-muted">match {b.job.match?.score ?? '–'} · interview {b.readiness}%</span>
+          </li>))}</ul>}
+    </section>
   )
 }

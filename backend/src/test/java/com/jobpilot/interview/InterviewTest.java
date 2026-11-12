@@ -143,4 +143,62 @@ class InterviewTest {
         mvc().perform(delete("/api/interview/sessions/" + s).header("Authorization", other)).andExpect(status().isNotFound());
         mvc().perform(delete("/api/interview/sessions/" + s).header("Authorization", auth)).andExpect(status().isNoContent());
     }
+
+    @Test
+    void liveInterviewFollowsUpOnWhatTheCandidateSaid() {
+        Interview.Item intro = Interview.liveStart().items().get(0);
+        String answer = "I built a ledger service in Java at Acme Pay that handles 2M transactions a day.";
+        List<String> prompts = new ArrayList<>();
+        Interview.Turn t = Interview.liveTurn(FACTS, JOB, List.of(), intro, answer, false, p -> {
+            prompts.add(p);
+            return "{\"relevance\":4,\"specificity\":3,\"technical\":4,\"concision\":5,\"improvements\":[\"Say your part\"],"
+                    + "\"improved_answer\":\"I built a ledger in Java.\",\"next_question\":\"How did your ledger stay consistent when a Kafka consumer crashed mid-batch?\"}";
+        });
+        assertTrue(prompts.get(0).contains(answer) && prompts.get(0).contains("next_question"));
+        assertEquals(4, t.feedback().score());
+        assertTrue(t.next().contains("ledger"));
+
+        // unreadable reply: still scored nothing, but the next question falls back to the standard set
+        Interview.Turn bad = Interview.liveTurn(FACTS, JOB, List.of(), intro, answer, false, p -> "{\"relevance\":3}");
+        assertNotNull(bad.next());
+        // last question: no follow-up asked
+        Interview.Turn last = Interview.liveTurn(FACTS, JOB, List.of(), intro, answer, true, p -> {
+            assertFalse(p.contains("next_question"));
+            return "{\"relevance\":3}";
+        });
+        assertNull(last.next());
+    }
+
+    @Test
+    void reportReadinessAndFallback() {
+        Interview.Feedback low = new Interview.Feedback(2, Map.of("relevance", 3, "specificity", 1, "technical", 2, "concision", 5), List.of(), null, List.of());
+        List<Interview.Item> items = List.of(new Interview.Item("INTRO", "q", "a", low), new Interview.Item("FOLLOW_UP", "q2", "a2", low));
+        assertEquals(44, Interview.readiness(items)); // mean 2.75 -> (2.75-1)/4
+        Interview.Report fb = Interview.report(FACTS, JOB, items, p -> "not json");
+        assertEquals("TEMPLATE", fb.source());
+        assertEquals("specificity", fb.gaps().get(0).area()); // weakest first
+        Interview.Report ai = Interview.report(FACTS, JOB, items, p ->
+                "{\"verdict\":\"Not yet.\",\"strengths\":[\"Clear\"],\"gaps\":[{\"area\":\"System design\",\"detail\":\"Explain trade-offs\"}],\"focus\":[\"STAR\"]}");
+        assertEquals("AI", ai.source());
+        assertEquals("System design", ai.gaps().get(0).area());
+        assertEquals(44, ai.readiness());
+    }
+
+    @Test
+    void liveSessionAnswersInOrderOnly() throws Exception {
+        String auth = register();
+        String body = mvc().perform(post("/api/interview/sessions").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"Backend Engineer\",\"live\":true}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("LIVE")).andExpect(jsonPath("$.items.length()").value(1))
+                .andReturn().getResponse().getContentAsString();
+        String id = Interview.JSON.readTree(body).get("id").asString();
+        // a later question can't be answered first
+        mvc().perform(post("/api/interview/sessions/" + id + "/answers/3").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"answer\":\"x\"}")).andExpect(status().isNotFound());
+        // no model in tests -> 503, the question stays open
+        mvc().perform(post("/api/interview/sessions/" + id + "/answers/0").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"answer\":\"I build payment systems.\"}")).andExpect(status().isServiceUnavailable());
+        mvc().perform(get("/api/interview/sessions").header("Authorization", auth))
+                .andExpect(jsonPath("$[0].mode").value("LIVE")).andExpect(jsonPath("$[0].total").value(8));
+    }
 }

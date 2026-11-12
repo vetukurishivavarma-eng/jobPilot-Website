@@ -49,9 +49,9 @@ function App() {
   )
 }
 
-type Gaps = { missing: string[]; percent: number } | null
+type Gaps = { missing: string[]; later: string[]; percent: number } | null
 
-// Jobs and Applications open only with a 100% profile
+// Jobs and Applications open once the essentials are in (resume, skills, desired roles, preferred locations)
 function Unlocked() {
   const gaps = useOutletContext<Gaps>()
   if (!gaps) return <p className="text-muted">Loading…</p>

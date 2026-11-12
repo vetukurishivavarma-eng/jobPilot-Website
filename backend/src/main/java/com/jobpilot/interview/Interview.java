@@ -26,8 +26,152 @@ public final class Interview {
     /** score = rounded mean of the rubric; rubric keys: relevance, specificity, technical, concision (1-5 each). */
     public record Feedback(Integer score, Map<String, Integer> rubric, List<String> improvements, String improvedAnswer, List<String> warnings) {}
     public record Item(String type, String question, String answer, Feedback feedback) {}
-    /** source: AI (model wrote the questions) or TEMPLATE (model unavailable, standard questions from the job's skills). */
-    public record Content(String source, List<Item> items) {}
+    /**
+     * source: AI (model wrote the questions) or TEMPLATE (model unavailable, standard questions from the job's skills).
+     * mode: SET (all questions up front; null on old sessions) or LIVE (one question at a time, each built on the answers so far).
+     * report: LIVE only, written after the last answer.
+     */
+    public record Content(String source, List<Item> items, String mode, Report report) {
+        Content(String source, List<Item> items) { this(source, items, "SET", null); }
+        boolean live() { return "LIVE".equals(mode); }
+    }
+    /** readiness 0-100 from the mean rubric score; gaps compare the answers with what interviewers expect at this level. */
+    public record Report(Integer readiness, String verdict, List<String> strengths, List<Gap> gaps, List<String> focus, String source) {}
+    public record Gap(String area, String detail) {}
+
+    static final int LIVE_QUESTIONS = 8;
+    static final String INTRO = "Tell me about yourself: your background, and one project you're proud of. What was your part in it?";
+
+    // ------------------------------------------------------------------ live interview
+
+    static Content liveStart() { return new Content("AI", List.of(new Item("INTRO", INTRO, null, null)), "LIVE", null); }
+
+    /** One model call scores the answer AND asks the next question, like an interviewer following up. next is null after the last question. */
+    record Turn(Feedback feedback, String next) {}
+
+    static Turn liveTurn(Tailor.Facts f, Tailor.JobInfo job, List<Item> done, Item item, String answer, boolean last, Function<String, String> llmJson) {
+        String raw = llmJson == null ? null : llmJson.apply(livePrompt(f, job, done, item, answer, last));
+        Feedback fb = checked(f, item, answer, parseFeedback(raw));
+        String next = null;
+        if (!last) {
+            JsonNode root = readJson(raw);
+            if (root != null && root.isObject()) next = text(root, "next_question", "nextQuestion", "next");
+            if (next == null || next.strip().length() < 10) next = fallbackNext(f, job, done.size() + 1);
+            next = cut(next.strip(), 400);
+        }
+        return new Turn(fb, next);
+    }
+
+    static String livePrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> done, Item item, String answer, boolean last) {
+        StringBuilder t = new StringBuilder();
+        for (Item i : done) t.append("Q: ").append(i.question()).append("\nA: ").append(cut(i.answer(), 1200)).append('\n');
+        String ask = last ? "" : """
+                next_question: ONE question, as a real interviewer would ask next. Dig into the projects, tools and decisions the candidate actually mentioned (why that design, what broke, trade-offs, how it scaled, what they would change) and test the skills the job needs. If an answer was vague, press for specifics. Include one behavioural question somewhere in the interview. Never repeat a question. One or two sentences, no answer.
+                """;
+        return """
+                You are an interviewer running a realistic interview for the role below. Interview the way this company's interviewers typically do for this role and level, from what is publicly known about their process; if you don't know the company, run a standard interview for this level. Never claim to have seen real interview reports.
+                Score the candidate's latest answer%s.
+                Return JSON only: {"relevance":1-5,"specificity":1-5,"technical":1-5,"concision":1-5,"improvements":["..."],"improved_answer":"..."%s}
+                relevance: answers the question that was asked.
+                specificity: a concrete example; for behavioural questions STAR (situation, task, action, result).
+                technical: correct and precise, at the depth expected for this level.
+                concision: fits in 2 minutes spoken, no filler.
+                improvements: 2 or 3 concrete fixes for this answer.
+                improved_answer: this answer rewritten better, first person, at most 150 words, using ONLY facts from the answer and the candidate profile. Never invent numbers, employers, tools or results; where a number would help, write [add your own number here].
+                %s
+                CANDIDATE:
+                %s
+                ROLE: %s
+                JOB TEXT:
+                %s
+                INTERVIEW SO FAR:
+                %s
+                LATEST QUESTION: %s
+                LATEST ANSWER:
+                %s
+                """.formatted(last ? " (this was the last question)" : ", then ask the next question",
+                last ? "" : ",\"next_question\":\"...\"", ask,
+                profileText(f), roleLine(job),
+                job.description() == null ? "(none)" : cut(job.description(), 1500),
+                t.length() == 0 ? "(this is the first question)" : cut(t.toString(), 6000),
+                item.question(), cut(answer, 3000));
+    }
+
+    /** Model unavailable or unreadable: the standard set, in order. */
+    static String fallbackNext(Tailor.Facts f, Tailor.JobInfo job, int n) {
+        List<Question> qs = template(f, job);
+        return qs.get(Math.min(Math.max(n - 1, 0), qs.size() - 1)).text();
+    }
+
+    static Report report(Tailor.Facts f, Tailor.JobInfo job, List<Item> items, Function<String, String> llmJson) {
+        Integer readiness = readiness(items);
+        JsonNode r = llmJson == null ? null : readJson(llmJson.apply(reportPrompt(f, job, items)));
+        if (r != null && !r.isObject()) r = null;
+        List<Gap> gaps = new ArrayList<>();
+        JsonNode g = r == null ? null : r.get("gaps");
+        if (g != null && g.isArray()) for (JsonNode x : g) {
+            String area = x.isObject() ? text(x, "area", "topic") : x.isString() ? x.asString() : null;
+            String detail = x.isObject() ? text(x, "detail", "vs_market", "why") : null;
+            if (area != null && gaps.size() < 5) gaps.add(new Gap(cut(area, 120), detail == null ? null : cut(detail, 400)));
+        }
+        String verdict = r == null ? null : text(r, "verdict", "summary");
+        if (verdict == null && gaps.isEmpty()) return templateReport(items, readiness);
+        return new Report(readiness, verdict == null ? null : cut(verdict, 600), strings(r, "strengths"), gaps, strings(r, "focus"), "AI");
+    }
+
+    static String reportPrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> items) {
+        StringBuilder t = new StringBuilder();
+        for (Item i : items) {
+            t.append("Q: ").append(i.question()).append("\nA: ").append(cut(i.answer(), 800));
+            if (i.feedback() != null && i.feedback().rubric() != null) t.append("\nScores (1-5): ").append(i.feedback().rubric());
+            t.append('\n');
+        }
+        return """
+                You are a hiring panel reviewing a finished mock interview for the role below.
+                Return JSON only: {"verdict":"...","strengths":["..."],"gaps":[{"area":"...","detail":"..."}],"focus":["..."]}
+                verdict: 2 sentences, honest: would this candidate likely clear this round today, and why.
+                strengths: up to 3, each tied to something they actually said.
+                gaps: up to 4 areas where they fall short of what interviewers expect for this role and level today (the market standard); detail = what a strong candidate would have said or shown.
+                focus: up to 4 concrete things to practise before the real interview.
+                Use only the transcript and profile; never invent facts about the candidate.
+
+                CANDIDATE:
+                %s
+                ROLE: %s
+                TRANSCRIPT:
+                %s
+                """.formatted(profileText(f), roleLine(job), cut(t.toString(), 9000));
+    }
+
+    /** Mean rubric score of the scored answers as 0-100 (1 -> 0, 5 -> 100); null if none were scored. */
+    static Integer readiness(List<Item> items) {
+        DoubleSummaryStatistics st = items.stream().filter(i -> i.feedback() != null && i.feedback().rubric() != null)
+                .flatMap(i -> i.feedback().rubric().values().stream()).mapToDouble(x -> x).summaryStatistics();
+        return st.getCount() == 0 ? null : (int) Math.round((st.getAverage() - 1) / 4 * 100);
+    }
+
+    /** No model: the two weakest rubric criteria become the gaps. */
+    static Report templateReport(List<Item> items, Integer readiness) {
+        Map<String, DoubleSummaryStatistics> by = new TreeMap<>();
+        for (Item i : items) if (i.feedback() != null && i.feedback().rubric() != null)
+            i.feedback().rubric().forEach((k, v) -> by.computeIfAbsent(k, x -> new DoubleSummaryStatistics()).accept(v));
+        Map<String, String> tip = Map.of(
+                "relevance", "Answer the exact question first, then add context.",
+                "specificity", "Use real examples with STAR (situation, task, action, result) and your own numbers.",
+                "technical", "Go one level deeper: design choices, trade-offs, what failed and why.",
+                "concision", "Keep answers under 2 minutes and lead with the point.");
+        List<Gap> gaps = by.entrySet().stream().sorted(Comparator.comparingDouble(e -> e.getValue().getAverage())).limit(2)
+                .map(e -> new Gap(e.getKey(), tip.get(e.getKey()))).toList();
+        return new Report(readiness, null, List.of(), gaps, List.of(), "TEMPLATE");
+    }
+
+    private static List<String> strings(JsonNode r, String key) {
+        List<String> out = new ArrayList<>();
+        JsonNode v = r == null ? null : r.get(key);
+        if (v != null && v.isArray()) for (JsonNode x : v)
+            if (x.isString() && !x.asString().isBlank() && out.size() < 4) out.add(cut(x.asString().strip(), 300));
+        return out;
+    }
 
     // ------------------------------------------------------------------ questions
 
@@ -113,7 +257,11 @@ public final class Interview {
     /** null when the model is unavailable or its reply has nothing usable. */
     static Feedback feedback(Tailor.Facts f, String role, Item item, String answer, Function<String, String> llmJson) {
         String raw = llmJson == null ? null : llmJson.apply(feedbackPrompt(f, role, item, answer));
-        Feedback fb = parseFeedback(raw);
+        return checked(f, item, answer, parseFeedback(raw));
+    }
+
+    /** Fact-checks the improved answer against the candidate's own facts. */
+    static Feedback checked(Tailor.Facts f, Item item, String answer, Feedback fb) {
         if (fb == null || fb.improvedAnswer() == null) return fb;
         // the candidate's own answer is a source of facts too
         String source = f.all() + "\n" + answer + "\n" + item.question();
