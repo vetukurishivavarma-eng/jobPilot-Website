@@ -124,7 +124,7 @@
 - "Find jobs now" over the whole catalog takes >45s (synchronous request); consider async + poll like auto mode.
 
 ## 2026-11-08 late night: preferred-location filter + profile lock
-- Jobs list (and auto mode's picks) show only jobs in the profile's desired locations, or remote open to India (not "Remote - US"); unknown location hidden; relocation does NOT widen it. `MatchScorer.inDesiredLocation` (+ test). List now always filters/pages in memory.
+- Jobs list (and auto mode's picks) show only jobs in the profile's desired locations, or remote open to India (not "Remote - US"); unknown location hidden; relocation does NOT widen it (CHANGED 2026-11-13: willing to relocate = any India city, never abroad). `MatchScorer.inDesiredLocation` (+ test). List now always filters/pages in memory.
 - Jobs/Applications/Companies (incl. tailor + application pages) locked until `profileGaps` (frontend api.ts) is empty: resume, headline, title, phone, location, years, summary, skills, desired roles, preferred locations, experience (if 1+ yrs), education, salary+currency, notice, work auth, LinkedIn. Banner with % + missing list; ProfilePage save / ResumesPage refresh fire `jobpilot:profile` to re-check. UI-only gate (API not enforced).
 - User's preferred locations = ["Thane"] -> only 3 jobs (remote India) remain; most found jobs are Bengaluru. Asked the user whether to add cities.
 

@@ -242,6 +242,9 @@ public final class MatchScorer {
         if (c.desiredLocations().stream().anyMatch(l -> sameCity(where, l))) return true;
         boolean remote = "REMOTE".equals(workplace) || where.contains("remote") || where.contains("anywhere");
         boolean wantsIndia = c.desiredLocations().stream().anyMatch(MatchScorer::inIndia);
+        // open to relocating: any city in their country (scored lower than their own city). Mumbai alone hid ~99% of
+        // India's developer openings (Bengaluru 377 of 500 on the catalog boards, 2026-11-13)
+        if (c.willingToRelocate() && wantsIndia && inIndia(where)) return true;
         return remote && (!namesAPlace(where) || inIndia(where) == wantsIndia);
     }
 
