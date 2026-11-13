@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError, PRO_PERKS, type Billing, type InterviewPack, type UpiOrder, type InterviewReport, type InterviewSession, type InterviewSummary, type Job } from '../api'
 
@@ -154,6 +154,7 @@ export function InterviewSessionPage() {
       {s.recordingExpiresAt && <Recording s={s} />}
       {s.mode === 'LIVE' && s.done && !s.report && <RetryReport s={s} onChange={setS} />}
       {s.report && <Report r={s.report} />}
+      {api.needsModelAnswers(s) && <ModelAnswers s={s} onChange={setS} />}
       {s.report && <h2 className="font-display text-xl font-bold">Question by question</h2>}
 
       <div className="flex flex-wrap gap-1" role="tablist">
@@ -202,7 +203,7 @@ export function InterviewSessionPage() {
           )}
           {fb.improvedAnswer && (
             <div>
-              <p className="label">A stronger answer, from your own facts</p>
+              <p className="label">What a 5/5 answer sounds like (from your own facts)</p>
               <p className="whitespace-pre-wrap rounded-md bg-paper px-3 py-2 text-sm leading-relaxed">{fb.improvedAnswer}</p>
             </div>
           )}
@@ -267,6 +268,28 @@ function Recording({ s }: { s: InterviewSession }) {
       <button className="btn" onClick={download}>Download recording</button>
       {error && <p className="w-full text-sm text-danger">{error}</p>}
     </section>
+  )
+}
+
+/** Writes the 5/5 answers once the report is in (one AI call); a retry button if the AI is busy. */
+function ModelAnswers({ s, onChange }: { s: InterviewSession; onChange: (s: InterviewSession) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const tries = useRef(0)
+  // only our strongest model writes these; when it's busy, wait a minute and try once more by itself
+  const run = () => {
+    setBusy(true); setError(null); tries.current++
+    api.modelAnswers(s.id).then(onChange).catch(e => {
+      setError(msg(e))
+      if (tries.current < 2) setTimeout(run, 65_000)
+    }).finally(() => setBusy(false))
+  }
+  useEffect(run, [s.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <p className="text-sm text-muted">
+      {busy ? 'Writing what a 5/5 answer to each question sounds like…' : error}
+      {!busy && error && <button className="btn-ghost ml-2" onClick={run}>Try again</button>}
+    </p>
   )
 }
 

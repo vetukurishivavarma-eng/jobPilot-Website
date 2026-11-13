@@ -4,7 +4,7 @@
 - **Company interview packs** (`interview/CompanyPack`): TCS, Infosys, Wipro, Accenture, Cognizant, Capgemini, HCLTech; 8-question plan + style from publicly described rounds; session title = pack title (how turns find it); `Interview.focus(f, job, n)`. Live-tested TCS: follow-up on the candidate's project, as planned.
 - **Pro** Rs 199 / 30 days incl. 8 live interviews; free accounts (only while payments are on): 5 AI-tailored docs/day (402 PRO_REQUIRED), auto-apply max 5/day.
 - **Payments = UPI QR, approved by hand** (user's choice 2026-11-14): set on Render `UPI_ID` (+ `UPI_NAME`, `ADMIN_EMAILS`) -> payments ON (and free limits ON). Buyer: QR (web, /pay/{id}/qr.svg) or UPI app (phone) -> 12-digit UTR -> PENDING + email to admins -> approve at /admin/payments (website; link shows on Interview page for admins). Razorpay + webhook (/pay/webhook, RAZORPAY_WEBHOOK_SECRET) built but unused while UPI_ID is set.
-- NOT done: UPI_ID / ADMIN_EMAILS not set yet (user to give their UPI ID); nothing paid end to end.
+- **2026-11-14 01:15 LIVE**: trust-first (plan starts on UTR; admin marks Received or Revokes, V13 checked_at). Render env set: UPI_ID=sambamurthy444-4@okhdfcbank, ADMIN_EMAILS=jobpilot92@gmail.com (UPI_NAME default JobPilot). Verified live: mode UPI, upi:// link + QR. Free limits now ON for everyone. App 1.5.1/vc19 RELEASED (link in WA self). NOT done: a real paid test, admin account jobpilot92 must exist in JobPilot.
 
 ## 2026-11-14: Workday agent apply (deployed; app 1.4.5 building)
 - Apply link = job.url + /apply/autofillWithResume (`ApplicationService.workdayApply`); `workdaySegment(url)` maps any apply step (locale or not) back to the job (`findFirstBySourceAndUrlContaining`).

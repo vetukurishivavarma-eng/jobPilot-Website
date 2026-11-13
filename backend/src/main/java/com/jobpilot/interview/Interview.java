@@ -181,6 +181,54 @@ public final class Interview {
         return new Evaluation(out, new Report(readiness, verdict == null ? null : cut(verdict, 600), strings(r, "strengths"), gaps, strings(r, "focus"), "AI"));
     }
 
+    /** Answered questions that have no 5/5 answer yet (the report call writes one, for the weakest). */
+    static boolean needsModelAnswers(List<Item> items) {
+        return items.stream().anyMatch(i -> i.answer() != null && i.feedback() != null && i.feedback().improvedAnswer() == null);
+    }
+
+    /**
+     * After the report, one more call: what a 5/5 answer to each question would have been, built from the candidate's
+     * own facts (fact-checked like every improved answer). Separate from the report call to stay under the provider's
+     * output-tokens-per-minute limit. Items unchanged if the model fails.
+     */
+    static List<Item> modelAnswers(Tailor.Facts f, Tailor.JobInfo job, List<Item> items, Function<String, String> llmJson) {
+        JsonNode r = llmJson == null ? null : readJson(llmJson.apply(modelAnswersPrompt(f, job, items)));
+        List<Item> out = new ArrayList<>(items);
+        JsonNode list = r == null ? null : r.isArray() ? r : r.get("answers");
+        if (list == null || !list.isArray()) return out;
+        for (JsonNode b : list) {
+            int q = b.path("q").asInt(0) - 1;
+            String text = text(b, "a", "answer", "text");
+            if (q < 0 || q >= out.size() || text == null || out.get(q).answer() == null) continue;
+            Item it = out.get(q);
+            Feedback old = it.feedback() != null ? it.feedback() : new Feedback(null, Map.of(), List.of(), null, List.of());
+            if (old.improvedAnswer() != null) continue;
+            out.set(q, withFeedback(it, checked(f, it, it.answer(), new Feedback(old.score(), old.rubric(), old.improvements(), cut(text.strip(), 1500), List.of()))));
+        }
+        return out;
+    }
+
+    static String modelAnswersPrompt(Tailor.Facts f, Tailor.JobInfo job, List<Item> items) {
+        StringBuilder t = new StringBuilder();
+        for (int i = 0; i < items.size(); i++) {
+            Item it = items.get(i);
+            if (it.answer() == null || (it.feedback() != null && it.feedback().improvedAnswer() != null)) continue;
+            t.append(i + 1).append(". Q: ").append(cut(it.question(), 300)).append("\nA: ").append(cut(it.answer(), 700)).append('\n');
+        }
+        return """
+                You are an interview coach. For each numbered question below, write the answer this candidate could have given that would score 5/5 on all four: relevance (answers exactly what was asked), specificity (a concrete example; STAR for behavioural questions), technical (correct at the candidate's level), concision.
+                Return JSON only: {"answers":[{"q":1,"a":"..."}]}, one per numbered question.
+                Each answer: first person, spoken style, 40 to 70 words. For concept questions (OOP, SQL, OS, networks, DSA) explain the concept correctly and simply, with a tiny example.
+                Personal facts (projects, employers, tools used, numbers, results) ONLY from the candidate's answer and profile. Never invent them: write [add your own number] or [your example] instead.
+                CANDIDATE LEVEL: %s
+                CANDIDATE:
+                %s
+                ROLE: %s
+                QUESTIONS AND THEIR ANSWERS:
+                %s
+                """.formatted(level(f), profileText(f), roleLine(job), cut(t.toString(), 7000));
+    }
+
     /** {"q":1,"s":[5,3,4,4],"tip":"..."} -> Feedback; null if "s" isn't 4 scores. */
     static Feedback compactFeedback(JsonNode n) {
         JsonNode sc = n.get("s");

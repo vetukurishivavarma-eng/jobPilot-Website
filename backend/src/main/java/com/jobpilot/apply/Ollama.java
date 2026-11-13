@@ -66,6 +66,15 @@ public class Ollama {
         return call(prompt, true, MAX_JSON_TOKENS, 0, reportModel);
     }
 
+    /**
+     * Only the strongest model (REPORT_MODEL), never a smaller fallback: for text users take as "the right answer"
+     * (the 5/5 interview answers). Null when it's busy or missing; the caller asks the user to retry.
+     */
+    public String generateBest(String prompt) {
+        return props.llms().stream().filter(l -> l.model().equals(reportModel)).findFirst()
+                .map(l -> cloud(l, prompt, true, MAX_JSON_TOKENS, 0)).filter(r -> !r.isEmpty()).orElse(null);
+    }
+
     private String call(String prompt, boolean json, int maxTokens, double temperature) {
         return call(prompt, json, maxTokens, temperature, "");
     }

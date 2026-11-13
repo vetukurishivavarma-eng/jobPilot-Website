@@ -337,4 +337,29 @@ class InterviewTest {
         assertTrue(prompt.contains("why TCS") && prompt.contains("never claim to have seen real interview reports"));
         for (CompanyPack p : CompanyPack.all()) assertEquals(Interview.LIVE_QUESTIONS, p.plan().size(), p.id() + ": one focus per question");
     }
+
+    @Test
+    void modelAnswersForEveryQuestionFromTheCandidatesOwnFacts() {
+        Interview.Feedback scored = new Interview.Feedback(3, Map.of("relevance", 3), List.of("Add an example"), null, List.of());
+        Interview.Feedback hasOne = new Interview.Feedback(2, Map.of("relevance", 2), List.of(), "Already improved.", List.of());
+        List<Interview.Item> items = List.of(
+                new Interview.Item("INTRO", "Tell me about yourself", "I build payment APIs in Java", scored, null),
+                new Interview.Item("TECH", "What is a primary key?", "It identifies rows", hasOne, null),
+                new Interview.Item("BEHAVIOURAL", "A deadline you missed?", "Once I was late", scored, null));
+        assertTrue(Interview.needsModelAnswers(items));
+        String prompt = Interview.modelAnswersPrompt(FACTS, JOB, items);
+        assertTrue(prompt.contains("1. Q: Tell me about yourself") && prompt.contains("3. Q: A deadline") && !prompt.contains("primary key"),
+                "only questions without a 5/5 answer are sent");
+
+        String reply = "{\"answers\":[{\"q\":1,\"a\":\"I build payment APIs in Java and cut latency by 43 percent.\"},"
+                + "{\"q\":2,\"a\":\"should be ignored\"},{\"q\":3,\"a\":\"Situation: a sprint deadline. I told my lead early and split the work.\"}]}";
+        List<Interview.Item> out = Interview.modelAnswers(FACTS, JOB, items, p -> reply);
+        assertTrue(out.get(0).feedback().improvedAnswer().contains(Interview.ADD_NUMBER), "invented number replaced: " + out.get(0).feedback().improvedAnswer());
+        assertFalse(out.get(0).feedback().warnings().isEmpty());
+        assertEquals("Already improved.", out.get(1).feedback().improvedAnswer(), "kept");
+        assertTrue(out.get(2).feedback().improvedAnswer().startsWith("Situation"));
+        assertEquals(3, out.get(0).feedback().score(), "scores untouched");
+        assertFalse(Interview.needsModelAnswers(out));
+        assertEquals(items, Interview.modelAnswers(FACTS, JOB, items, p -> "not json"), "model failure changes nothing");
+    }
 }

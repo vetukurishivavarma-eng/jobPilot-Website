@@ -228,6 +228,17 @@ public class InterviewController {
         return save(s, new Interview.Content(c.source(), ev.items(), "LIVE", ev.report(), c.violationCount(), null));
     }
 
+    /** After the report: a 5/5 answer for every question that doesn't have one yet (one model call, saved). */
+    @PostMapping("/{id}/model-answers")
+    public SessionDto modelAnswers(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
+        InterviewSession s = own(userId, id);
+        Interview.Content c = content(s);
+        if (c.report() == null || !Interview.needsModelAnswers(c.items())) return dto(s);
+        List<Interview.Item> items = Interview.modelAnswers(tailor.facts(userId), job(userId, s), c.items(), ollama::generateBest); // strongest model only: users trust these
+        if (items.equals(c.items())) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE", "Our best AI model is busy right now. Your 5/5 answers will be ready in about a minute.");
+        return save(s, new Interview.Content(c.source(), items, c.mode(), c.report(), c.violationCount(), c.ended()));
+    }
+
     /** A phone seen on camera: the 1st time is a warning, the 2nd ends the interview (JobPilot Policy). Enforced here, not just in the app. */
     /** The candidate leaves a live interview: ends it with no score and no model calls. Ending twice is fine. */
     @PostMapping("/{id}/end")

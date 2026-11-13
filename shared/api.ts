@@ -225,6 +225,10 @@ export function createApi(cfg: ApiConfig) {
   interviewViolation: (id: string, kind: 'PHONE' | 'AWAY') => request<InterviewSession>('POST', `/interview/sessions/${id}/violations`, { kind }),
   endInterview: (id: string) => request<InterviewSession>('POST', `/interview/sessions/${id}/end`),
   interviewReport: (id: string) => request<InterviewSession>('POST', `/interview/sessions/${id}/report`),
+  /** After the report: writes a 5/5 answer for every question still without one (saved). */
+  modelAnswers: (id: string) => request<InterviewSession>('POST', `/interview/sessions/${id}/model-answers`),
+  /** The report exists but some answered questions have no 5/5 answer yet. */
+  needsModelAnswers: (s: InterviewSession) => !!s.report && s.items.some(i => i.answer && i.feedback && !i.feedback.improvedAnswer),
   uploadRecording: (id: string, video: Blob) => request<InterviewSession>('PUT', `/interview/sessions/${id}/recording`, video),
   recordingFile: (id: string) => file(`/interview/sessions/${id}/recording`),
   billing: () => request<Billing>('GET', '/billing'),
