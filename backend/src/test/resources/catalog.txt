@@ -1,1 +1,0 @@
-# empty in tests: discovery must not call real job boards
