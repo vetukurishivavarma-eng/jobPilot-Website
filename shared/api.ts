@@ -59,6 +59,8 @@ export type Application = {
   status: ApplicationStatus; resumeId: string | null; fields: FormField[]; missing: number; error: string | null; hasScreenshot: boolean; auto: boolean
   stage: Stage | null; followUpAt: string | null; timeline: TimelineEntry[]
   createdAt: string; updatedAt: string; submittedAt: string | null
+  /** Applied in a city that isn't one of the user's preferred locations: offer adding it. */
+  suggestLocation?: string | null
 }
 export type FollowUpEmail = { subject: string; body: string; source: 'AI' | 'TEMPLATE' }
 export type Outreach = { dm: string; subject: string; body: string; source: 'AI' | 'TEMPLATE' }
@@ -157,6 +159,12 @@ export function createApi(cfg: ApiConfig) {
 
   getProfile: () => request<Profile>('GET', '/profile'),
   saveProfile: (p: Profile) => request<Profile>('PUT', '/profile', p),
+  /** Adds a city to the preferred locations (no-op if it's there). */
+  addPreferredLocation: async (city: string) => {
+    const p = await request<Profile>('GET', '/profile')
+    if (p.desiredLocations.some(l => l.trim().toLowerCase() === city.trim().toLowerCase())) return p
+    return request<Profile>('PUT', '/profile', { ...p, desiredLocations: [...p.desiredLocations, city] })
+  },
   importProfile: () => request<{ profile: Profile; notes: string[] }>('POST', '/profile/import'),
 
   listResumes: () => request<Resume[]>('GET', '/resumes'),

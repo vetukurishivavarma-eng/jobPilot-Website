@@ -249,6 +249,7 @@ export function ApplicationPage() {
           {a.error && <p className="mt-3 rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900">{a.error}</p>}
         </section>
       )}
+      {a.status === 'SUBMITTED' && a.suggestLocation && <AddCity city={a.suggestLocation} onAdded={() => setA({ ...a, suggestLocation: null })} />}
       {a.status === 'SUBMITTED' && <Tracker a={a} onChange={setA} />}
       {a.status !== 'FILLING' && a.error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{a.error}</p>}
       {a.hasScreenshot && a.status !== 'FILLING' && (
@@ -288,6 +289,22 @@ export function ApplicationPage() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Applied in a city outside the preferred locations: one click adds it. */
+function AddCity({ city, onAdded }: { city: string; onAdded: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-signal/30 bg-signal-soft px-4 py-3 text-sm">
+      <span className="flex-1">You applied to a job in <b>{city}</b>. Add it to your preferred locations to see more jobs there?</span>
+      {error && <span className="text-danger">{error}</span>}
+      <button className="btn" disabled={busy} onClick={async () => {
+        setBusy(true); setError(null)
+        try { await api.addPreferredLocation(city); onAdded() } catch (e) { setError(msg(e)) } finally { setBusy(false) }
+      }}>Add {city}</button>
     </div>
   )
 }

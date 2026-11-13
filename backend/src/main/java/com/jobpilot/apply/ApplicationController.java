@@ -2,6 +2,8 @@ package com.jobpilot.apply;
 
 import com.jobpilot.job.Job;
 import com.jobpilot.job.JobRepository;
+import com.jobpilot.job.MatchScorer;
+import com.jobpilot.profile.ProfileRepository;
 import com.jobpilot.shared.ApiException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -27,7 +29,8 @@ public class ApplicationController {
     public record ApplicationDto(UUID id, UUID jobId, String jobTitle, String company, String jobUrl, String applyUrl, Application.Status status,
                                  UUID resumeId, List<FormField> fields, int missing, String error, boolean hasScreenshot, boolean auto,
                                  Application.Stage stage, Instant followUpAt, List<ApplicationService.TimelineEntry> timeline,
-                                 Instant createdAt, Instant updatedAt, Instant submittedAt) {}
+                                 Instant createdAt, Instant updatedAt, Instant submittedAt,
+                                 /** applied in a city that isn't a preferred location: offer adding it (null otherwise) */ String suggestLocation) {}
     public record CreateRequest(@NotNull UUID jobId) {}
     public record AnswersRequest(@NotNull Map<String, String> answers) {}
     public record StageRequest(@NotNull Application.Stage stage, String note, Integer followUpInDays) {}
@@ -35,8 +38,10 @@ public class ApplicationController {
     private final ApplicationRepository apps;
     private final JobRepository jobs;
     private final ApplicationService service;
+    private final ProfileRepository profiles;
 
-    ApplicationController(ApplicationRepository apps, JobRepository jobs, ApplicationService service) {
+    ApplicationController(ApplicationRepository apps, JobRepository jobs, ApplicationService service, ProfileRepository profiles) {
+        this.profiles = profiles;
         this.apps = apps;
         this.jobs = jobs;
         this.service = service;
@@ -148,7 +153,9 @@ public class ApplicationController {
         return new ApplicationDto(a.id, a.jobId, j == null ? null : j.title(), j == null ? null : j.company(), j == null ? null : j.url(), j == null || j.board() == null ? null : ApplicationService.applyUrl(j),
                 a.status, a.resumeId, f, (int) f.stream().filter(FormField::missing).count(), a.error, a.screenshotKey != null, a.auto,
                 a.stage, a.followUpAt, ApplicationService.timeline(a),
-                a.createdAt, a.updatedAt, a.submittedAt);
+                a.createdAt, a.updatedAt, a.submittedAt,
+                a.submittedAt == null || j == null ? null : MatchScorer.newCity(
+                        profiles.desiredLocations(a.userId), j.location(), j.workplace()));
     }
 
     private static ApiException bad(String msg) {

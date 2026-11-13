@@ -81,6 +81,44 @@ class MatchScorerTest {
     }
 
     @org.junit.jupiter.api.Test
+    void remoteScopeFromDescription() {
+        MatchScorer.Candidate hyd = new MatchScorer.Candidate(Set.of(), null, List.of(), List.of("Hyderabad"), false, null, null);
+        // a US company hiring remote from anywhere: shown
+        String open = MatchScorer.scopedLocation("Remote - US", "REMOTE", "We're a fully remote team and hire candidates from anywhere in the world.");
+        assertEquals("Remote - US (open to India)", open);
+        assertTrue(MatchScorer.inDesiredLocation(hyd, open, "REMOTE"));
+        assertTrue(MatchScorer.inMarket(open, "REMOTE"), "kept when jobs are collected");
+        // plain "Remote" but US-only: hidden
+        String usOnly = MatchScorer.scopedLocation("Remote", "REMOTE", "This role is remote. You must be located in the United States.");
+        assertEquals("Remote - United States", usOnly);
+        assertFalse(MatchScorer.inDesiredLocation(hyd, usOnly, "REMOTE"));
+        assertEquals("Remote - United States", MatchScorer.scopedLocation(null, "REMOTE", "Must be authorized to work in the US."));
+        assertEquals("Remote - Canada", MatchScorer.scopedLocation("Remote", "REMOTE", "Canada residents only."));
+        // plain remote, nothing said: shown as before
+        assertEquals("Remote", MatchScorer.scopedLocation("Remote", "REMOTE", "Build APIs in Java."));
+        assertTrue(MatchScorer.inDesiredLocation(hyd, "Remote", "REMOTE"));
+        // onsite and India postings are never touched
+        assertEquals("Bengaluru", MatchScorer.scopedLocation("Bengaluru", "ONSITE", "You must be located in the United States."));
+        assertEquals("Remote - India", MatchScorer.scopedLocation("Remote - India", "REMOTE", "US citizens only"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void strongMatchElsewhereAndCityToAdd() {
+        assertTrue(MatchScorer.strongElsewhere("Bengaluru, Karnataka", "ONSITE", 80));
+        assertFalse(MatchScorer.strongElsewhere("Bengaluru, Karnataka", "ONSITE", 74));
+        assertFalse(MatchScorer.strongElsewhere("Mountain View, CA", "ONSITE", 95), "never abroad");
+        assertFalse(MatchScorer.strongElsewhere("Bengaluru", "ONSITE", null));
+
+        List<String> mine = List.of("Hyderabad");
+        assertEquals("Bengaluru", MatchScorer.newCity(mine, "Bengaluru, Karnataka, India", "ONSITE"));
+        assertEquals("Pune", MatchScorer.newCity(mine, "Pune; Mumbai", null));
+        assertNull(MatchScorer.newCity(mine, "Bengaluru; Hyderabad", null), "also offered in one of theirs");
+        assertNull(MatchScorer.newCity(mine, "Secunderabad", null), "same city as Hyderabad");
+        assertNull(MatchScorer.newCity(mine, "Remote - India", "REMOTE"));
+        assertNull(MatchScorer.newCity(mine, "London, UK", "ONSITE"), "never suggest abroad");
+    }
+
+    @org.junit.jupiter.api.Test
     void onlyPreferredLocations() {
         MatchScorer.Candidate thane = new MatchScorer.Candidate(Set.of(), null, List.of(), List.of("Thane, India", "Hyderabad"), true, null, null);
         assertTrue(MatchScorer.inDesiredLocation(thane, "Mumbai, Maharashtra", null), "Thane = Mumbai area");

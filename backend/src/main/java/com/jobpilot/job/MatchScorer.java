@@ -118,6 +118,59 @@ public final class MatchScorer {
     private static final java.util.regex.Pattern ENTRY_TITLE = java.util.regex.Pattern.compile("(?i)\\b(intern(ship)?|new grad|graduate|fresher|trainee|apprentice)\\b");
 
     /** False for "Remote", "Anywhere", "Hybrid": words that don't name a country or city. */
+    /** Jobs outside the user's preferred locations still show (and can be applied to) from this match score up. */
+    public static final int STRONG_MATCH = 75;
+
+    private static final java.util.regex.Pattern OPEN_TO_INDIA = java.util.regex.Pattern.compile(
+            "(?i)\\b(work|hire|hiring|open to|candidates|applicants|anyone)\\b.{0,40}\\b(from )?(anywhere|worldwide|globally|any country|any location|india)\\b"
+            + "|\\b(fully remote|remote)[ ,-]+(worldwide|global|anywhere)\\b");
+    private static final java.util.regex.Pattern ABROAD_ONLY = java.util.regex.Pattern.compile(
+            "(?i)\\b(?:must|need to|required to|should)\\s+(?:be\\s+)?(?:reside|residing|located|based|live|living)\\s+(?:in\\s+)?(?:the\\s+)?(us|u\\.s\\.|usa|united states|canada|uk|united kingdom|europe|eu)\\b"
+            + "|\\b(us|u\\.s\\.|usa|united states|canada|uk|eu)[- ]?(?:based)?\\s+(?:candidates|applicants|residents|citizens)?\\s*only\\b"
+            + "|\\b(?:authori[sz]ed|eligible|legally able) to work in the (us|u\\.s\\.|united states|uk|united kingdom|canada)\\b"
+            + "|\\bremote\\b.{0,30}\\b(?:within|across) the (us|u\\.s\\.|united states|uk|united kingdom|canada)\\b");
+
+    /**
+     * A remote posting's real scope, from its description: "Remote" + "US residents only" -> "Remote - United States"
+     * (hidden for India users); "Remote - US" + "open to candidates in India / anywhere" -> "... (open to India)" (shown).
+     * Anything else is unchanged. Stored as the job's location, so the list filter needs no description.
+     */
+    public static String scopedLocation(String location, String workplace, String description) {
+        String where = location == null ? "" : location.toLowerCase(Locale.ROOT);
+        boolean remote = "REMOTE".equals(workplace) || where.contains("remote") || where.contains("anywhere");
+        if (!remote || description == null || inIndia(where)) return location;
+        if (namesAPlace(where)) return OPEN_TO_INDIA.matcher(description).find() ? location + " (open to India)" : location;
+        if (OPEN_TO_INDIA.matcher(description).find()) return location;
+        java.util.regex.Matcher m = ABROAD_ONLY.matcher(description);
+        if (!m.find()) return location;
+        String c = "";
+        for (int i = 1; i <= m.groupCount(); i++) if (m.group(i) != null) { c = m.group(i).toLowerCase(Locale.ROOT); break; }
+        String country = c.matches("us|u\\.s\\.|usa|united states") ? "United States" : c.matches("uk|united kingdom") ? "United Kingdom"
+                : c.equals("canada") ? "Canada" : "Europe";
+        return (location == null || location.isBlank() ? "Remote" : location) + " - " + country;
+    }
+
+    /** Outside the preferred locations but a strong match in the user's market (India, or remote open to it): still listed. */
+    public static boolean strongElsewhere(String location, String workplace, Integer score) {
+        return score != null && score >= STRONG_MATCH && inMarket(location, workplace);
+    }
+
+    /**
+     * The city to offer adding to preferred locations after applying here: the job's first India city that isn't one
+     * of theirs; null for remote jobs or when it's already theirs.
+     */
+    public static String newCity(List<String> preferred, String location, String workplace) {
+        if (location == null || "REMOTE".equals(workplace)) return null;
+        String where = location.toLowerCase(Locale.ROOT);
+        if (where.contains("remote") || where.contains("anywhere")) return null;
+        if (preferred.stream().anyMatch(p -> sameCity(where, p))) return null; // also offered in one of theirs
+        for (String part : location.split("[;|/]")) {
+            String city = part.split(",")[0].replaceAll("\\(.*?\\)", "").strip();
+            if (!city.isEmpty() && inIndia(part) && !city.equalsIgnoreCase("india")) return city;
+        }
+        return null;
+    }
+
     static boolean namesAPlace(String location) {
         String rest = location.toLowerCase(Locale.ROOT).replaceAll("\\b(remote|anywhere|worldwide|global|hybrid|onsite|on-site|in|apac|asia|work from home|wfh)\\b", "")
                 .replaceAll("[^a-z]+", "");

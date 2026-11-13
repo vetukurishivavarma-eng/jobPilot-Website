@@ -95,9 +95,9 @@ public class JobController {
                 skills.computeIfAbsent((UUID) r[0], k -> new ArrayList<>()).add((String) r[1]);
         record Scored(UserJobRepository.Light row, MatchScorer.Match match) {}
         Stream<Scored> scored = rows.stream()
-                .filter(l -> l.origin() == UserJob.Origin.IMPORT // jobs the user added always show
-                        || matcher.relevant(c, l, skills.getOrDefault(l.jobId(), List.of())))
-                .map(l -> new Scored(l, matcher.score(c, l, skills.getOrDefault(l.jobId(), List.of()))));
+                .map(l -> new Scored(l, matcher.score(c, l, skills.getOrDefault(l.jobId(), List.of()))))
+                .filter(x -> x.row().origin() == UserJob.Origin.IMPORT // jobs the user added always show
+                        || matcher.listed(c, x.row(), skills.getOrDefault(x.row().jobId(), List.of()), x.match()));
         if (sort.equalsIgnoreCase("match"))
             scored = scored.sorted(Comparator.comparing((Scored x) -> x.match().score(), Comparator.nullsLast(Comparator.reverseOrder())));
         List<Scored> all = scored.toList();

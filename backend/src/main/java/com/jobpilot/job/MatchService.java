@@ -82,9 +82,13 @@ public class MatchService {
         return MatchScorer.inDesiredLocation(c, j.location, j.workplace) && MatchScorer.fitsResume(c, j.title, j.skills, j.minYears, j.seniority);
     }
 
-    /** Same as {@link #relevant(MatchScorer.Candidate, Job)} for a list row (no description loaded). */
-    boolean relevant(MatchScorer.Candidate c, UserJobRepository.Light j, List<String> skills) {
-        return MatchScorer.inDesiredLocation(c, j.location(), j.workplace()) && MatchScorer.fitsResume(c, j.title(), skills, j.minYears(), j.seniority());
+    /**
+     * The job list (no description loaded): fits the resume, and in the preferred locations or a strong match
+     * ({@link MatchScorer#STRONG_MATCH}+) elsewhere in the user's market. Auto mode and the digest stay on preferred locations.
+     */
+    boolean listed(MatchScorer.Candidate c, UserJobRepository.Light j, List<String> skills, MatchScorer.Match m) {
+        return MatchScorer.fitsResume(c, j.title(), skills, j.minYears(), j.seniority())
+                && (MatchScorer.inDesiredLocation(c, j.location(), j.workplace()) || MatchScorer.strongElsewhere(j.location(), j.workplace(), m.score()));
     }
 
     MatchScorer.Match score(MatchScorer.Candidate c, UserJobRepository.Light j, List<String> skills) {

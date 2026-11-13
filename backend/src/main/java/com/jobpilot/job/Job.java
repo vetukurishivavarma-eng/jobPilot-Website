@@ -62,7 +62,7 @@ public class Job {
         applyUrl = cut(d.applyUrl(), 1000);
         title = newTitle;
         company = cut(d.company(), 200);
-        location = cut(d.location(), 300);
+        location = cut(MatchScorer.scopedLocation(d.location(), d.workplace(), d.description()), 300);
         workplace = d.workplace();
         employmentType = cut(d.employmentType(), 40);
         salaryMin = d.salaryMin();
@@ -90,6 +90,8 @@ public class Job {
     public String url() { return url; }
     public String title() { return title; }
     public String company() { return company; }
+    public String location() { return location; }
+    public String workplace() { return workplace; }
     public String description() { return description; }
     public Instant closedAt() { return closedAt; }
 

@@ -139,7 +139,7 @@ public class DiscoveryService {
             };
             int fetched = 0, linked = 0;
             for (UUID u : userIds) {
-                JobStore.Outcome o = store.save(drafts, b.key(), u, UserJob.Origin.COMPANY, d -> MatchScorer.inMarket(d.location(), d.workplace()));
+                JobStore.Outcome o = store.save(drafts, b.key(), u, UserJob.Origin.COMPANY, d -> MatchScorer.inMarket(MatchScorer.scopedLocation(d.location(), d.workplace(), d.description()), d.workplace()));
                 fetched = o.fetched();
                 linked += o.linked();
             }
