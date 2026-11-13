@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: jobpilot-backend
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/jobpilot}
+    username: ${DATABASE_USER:jobpilot}
+    password: ${DATABASE_PASSWORD:jobpilot}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  task:
+    scheduling:
+      pool:
+        size: 2   # discovery and auto mode must not wait on each other
+  servlet:
+    multipart:
+      max-file-size: 10MB  # spoken answer clips (resumes check their own 5 MB cap)
+      max-request-size: 11MB
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+jobpilot:
+  # Required. At least 32 characters. Generate one: openssl rand -base64 48
+  jwt-secret: ${JWT_SECRET}
+  jwt-ttl-hours: ${JWT_TTL_HOURS:24}
+  storage-dir: ${STORAGE_DIR:./data/resumes}
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173}
+  # Optional: Adzuna job search (free key at https://developer.adzuna.com). Without it only followed company boards are used.
+  adzuna-app-id: ${ADZUNA_APP_ID:}
+  adzuna-app-key: ${ADZUNA_APP_KEY:}
+  adzuna-country: ${ADZUNA_COUNTRY:in}
+  # Background discovery for every user (Spring cron; "-" disables it).
+  discovery-cron: ${DISCOVERY_CRON:0 0 */6 * * *}
+  # Local LLM used by the apply agent for open-ended questions ("Why do you want to join?"). Optional.
+  ollama-url: ${OLLAMA_URL:http://localhost:11434}
+  ollama-model: ${OLLAMA_MODEL:qwen2.5:3b-instruct}
+  # Optional cloud models, any OpenAI-compatible endpoint, tried in order: every LLM_MODEL, then every LLM2_MODEL,
+  # then Ollama. MODEL may be a comma list; on a failure/429 the next is tried, so free daily quotas stack. Free setup:
+  #   LLM_URL=https://api.groq.com/openai/v1  LLM_MODEL=qwen/qwen3.8-27b,openai/gpt-oss-120b,openai/gpt-oss-20b
+  #   LLM2_URL=https://generativelanguage.googleapis.com/v1beta/openai  LLM2_MODEL=gemini-3.5-flash-lite,gemini-3.8-flash
+  llm-url: ${LLM_URL:}
+  llm-api-key: ${LLM_API_KEY:}
+  llm-model: ${LLM_MODEL:}
+  llm2-url: ${LLM2_URL:}
+  llm2-api-key: ${LLM2_API_KEY:}
+  llm2-model: ${LLM2_MODEL:}
+  # End-of-interview report model, tried first (its own per-minute token budget; live questions keep the main model).
+  report-model: ${REPORT_MODEL:openai/gpt-oss-120b}
+  # Forgot-password emails via Brevo's HTTP API (free 300/day, https://app.brevo.com -> SMTP & API -> API keys).
+  # MAIL_FROM must be a sender verified in Brevo (a plain Gmail works). Unset: the reset link is only logged.
+  brevo-api-key: ${BREVO_API_KEY:}
+  mail-from: ${MAIL_FROM:}
+  # Daily email digest: new matched jobs + follow-ups due (Spring cron in Asia/Kolkata; "-" disables).
+  digest-cron: ${DIGEST_CRON:0 0 9 * * *}
+  # Public address of this API, for links in emails sent without a request (digest unsubscribe).
+  public-url: ${PUBLIC_URL:https://jobpilot-api-gpa6.onrender.com}
+  # Spoken interview answers -> text (Whisper; OpenAI-compatible). Defaults to Groq with the LLM key.
+  stt-url: ${STT_URL:https://api.groq.com/openai/v1}
+  stt-api-key: ${STT_API_KEY:${LLM_API_KEY:}}
+  stt-model: ${STT_MODEL:whisper-large-v3-turbo,whisper-large-v3}  # tried in order (separate Groq limits)
+  # Paid live interviews (Razorpay). Both unset = billing off, live interviews free.
+  razorpay-key-id: ${RAZORPAY_KEY_ID:}
+  razorpay-key-secret: ${RAZORPAY_KEY_SECRET:}
+  # Auto mode runs for users who switched it on (Spring cron; "-" disables).
+  auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}
