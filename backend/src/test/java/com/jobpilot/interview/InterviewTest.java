@@ -256,6 +256,14 @@ class InterviewTest {
         mvc().perform(post("/api/interview/sessions/" + q + "/end").header("Authorization", auth)).andExpect(jsonPath("$.ended").value("QUIT"));
         assertEquals("I led the migration.", Interview.stripNudge("I led the Please look at the camera. migration.").replace("  ", " "));
         assertEquals("", Interview.stripNudge("Please, look at the camera!"));
+        assertEquals("Yes.", Interview.stripNudge("Stay in the camera frame. Last warning. Yes."));
+        // leaving the camera frame a 3rd time: the page reports AWAY once and the interview is cancelled as cheating
+        String g = Interview.JSON.readTree(mvc().perform(post("/api/interview/sessions").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"Backend Engineer\",\"live\":true}")).andReturn().getResponse().getContentAsString()).get("id").asString();
+        mvc().perform(post("/api/interview/sessions/" + g + "/violations").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON).content("{\"kind\":\"AWAY\"}"))
+                .andExpect(jsonPath("$.ended").value("CHEATING")).andExpect(jsonPath("$.report.source").value("CHEATING"));
+        mvc().perform(post("/api/interview/sessions/" + g + "/answers/0").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"answer\":\"x\"}")).andExpect(status().isConflict());
         assertTrue(Interview.wantsToQuit("Stop the interview please"));
         assertTrue(Interview.wantsToQuit("close it"));
         assertTrue(Interview.wantsToQuit("I do not want to continue"));

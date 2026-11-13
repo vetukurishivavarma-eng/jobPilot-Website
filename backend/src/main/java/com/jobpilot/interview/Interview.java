@@ -232,13 +232,16 @@ public final class Interview {
             + "|\\b(don'?t|do not) want (this|the|to (do|continue|go on))"
             + "|^\\W*(please |ok |okay )?(close|end|stop|quit|exit|cancel)( it| this| now)?\\b");
 
-    private static final java.util.regex.Pattern NUDGE = java.util.regex.Pattern.compile("(?i)\\s*please,? look at the camera[.!]?");
+    private static final java.util.regex.Pattern NUDGE = java.util.regex.Pattern.compile("(?i)\\s*(please,? look at the camera|stay in the camera frame)[.!]?(\\s*last warning[.!]?)?");
     static String stripNudge(String transcript) { return NUDGE.matcher(transcript).replaceAll("").strip(); }
 
     /** The candidate asked to stop ("I don't want this interview, close it"). */
     static boolean wantsToQuit(String answer) {
         return answer.split("\\s+").length <= 20 && QUIT_WORDS.matcher(answer).find();
     }
+
+    static final String CHEATING = "This interview was cancelled for cheating: you left the camera frame 3 times.";
+    static Report cheatingReport() { return new Report(null, CHEATING, List.of(), List.of(), List.of(), "CHEATING"); }
 
     static Report policyReport() { return new Report(null, POLICY, List.of(), List.of(), List.of(), "POLICY"); }
 

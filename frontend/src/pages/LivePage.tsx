@@ -7,7 +7,10 @@ import { confirmDialog } from '../dialog'
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
 const INTERVIEWER = 'Arjun'
 const TOTAL = 8
-const NUDGE = 'Please look at the camera.' // the server strips this from answer transcripts (the mic hears it)
+// the server strips these from answer transcripts (the mic hears them)
+const NUDGE = 'Please look at the camera.'
+const GONE_WARNING = ['Stay in the camera frame.', 'Stay in the camera frame. Last warning.']
+const GONE_LIMIT = 3 // leaving the frame this many times ends the interview as cheating
 type Phase = 'loading' | 'ready' | 'asking' | 'listening' | 'typing' | 'thinking' | 'warned' | 'finishing' | 'policy' | 'error'
 
 /**
@@ -25,6 +28,8 @@ export default function LivePage() {
   const phonePending = useRef(false)
   const misses = useRef(0)
   const lastNudge = useRef(0)
+  // ponytail: counted on the page, so a reload resets it; move the count to the server if people game it
+  const gone = useRef(0)
   const left = useRef(false) // the candidate ended it: drop any reply still in flight
   const [s, setS] = useState<InterviewSession | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
@@ -62,10 +67,15 @@ export default function LivePage() {
     e.onAway = a => {
       setAway(a)
       // said out loud while they answer, at most every 20 s; never over a question
-      if (a && (phaseRef.current === 'listening' || phaseRef.current === 'typing') && Date.now() - lastNudge.current > 20000) {
+      if (a && !e.goneNow && (phaseRef.current === 'listening' || phaseRef.current === 'typing') && Date.now() - lastNudge.current > 20000) {
         lastNudge.current = Date.now()
         speak(NUDGE)
       }
+    }
+    e.onGone = () => {
+      if (left.current || !['asking', 'listening', 'typing', 'thinking', 'warned'].includes(phaseRef.current)) return
+      if (++gone.current >= GONE_LIMIT) return cheated()
+      speak(GONE_WARNING[gone.current - 1])
     }
     e.onPhone = () => { phonePending.current = true; if (phaseRef.current === 'listening' || phaseRef.current === 'typing') handlePhone() }
     try { await e.start(video.current!) } catch {
@@ -112,6 +122,7 @@ export default function LivePage() {
       misses.current = 0
       after(await api.answerInterviewAudio(x.id, x.items.length - 1, fd))
     } catch (e) {
+      if (left.current) return
       if (e instanceof ApiError && (e.code === 'NO_SPEECH' || e.code === 'STT_UNAVAILABLE') && ++misses.current <= 2) {
         await speak(e.code === 'NO_SPEECH' ? "Sorry, I didn't catch that. Could you say it again?" : 'Sorry, I lost you for a moment. Please answer again.')
         return listen()
@@ -135,7 +146,7 @@ export default function LivePage() {
     setPhase('thinking')
     const x = session.current!
     try { setDraft(''); after(await api.answerInterview(x.id, x.items.length - 1, text, signals as Signals)) }
-    catch (e) { setError(msg(e)); engine.current!.beginAnswer(true); setPhase('typing') }
+    catch (e) { if (left.current) return; setError(msg(e)); engine.current!.beginAnswer(true); setPhase('typing') }
   }
 
   function after(x: InterviewSession) {
@@ -178,12 +189,22 @@ export default function LivePage() {
     finished(x)
   }
 
+  async function cheated() {
+    left.current = true // drop any answer still in flight
+    cancelListen.current()
+    stopSpeaking()
+    try { update(await api.interviewViolation(session.current!.id, 'AWAY')) } catch (e) { setError(msg(e)) }
+    policy()
+  }
+
   async function policy() {
     cancelListen.current()
     setPhase('policy')
     await engine.current?.stop()
     engine.current = null
-    await speak('A phone was seen on camera again. This violates JobPilot Policy, so this interview has been stopped.')
+    await speak(session.current?.ended === 'CHEATING'
+      ? `You left the camera frame ${GONE_LIMIT} times. This is treated as cheating, so this interview has been cancelled.`
+      : 'A phone was seen on camera again. This violates JobPilot Policy, so this interview has been stopped.')
   }
 
   async function finish(x: InterviewSession) {
@@ -274,8 +295,8 @@ export default function LivePage() {
         )}
         {phase === 'policy' && (
           <div role="alert" className="max-w-md space-y-3 rounded-xl bg-red-500/15 p-4 text-center">
-            <p className="font-semibold text-red-300">Interview stopped</p>
-            <p className="text-sm text-white/80">A phone was seen on camera a second time. This violates JobPilot Policy.</p>
+            <p className="font-semibold text-red-300">{s?.ended === 'CHEATING' ? 'Interview cancelled: cheating' : 'Interview stopped'}</p>
+            <p className="text-sm text-white/80">{s?.ended === 'CHEATING' ? `You left the camera frame ${GONE_LIMIT} times.` : 'A phone was seen on camera a second time. This violates JobPilot Policy.'}</p>
             <button className="rounded-lg bg-white/10 px-4 py-2" onClick={() => s && finished(s)}>Close</button>
           </div>
         )}

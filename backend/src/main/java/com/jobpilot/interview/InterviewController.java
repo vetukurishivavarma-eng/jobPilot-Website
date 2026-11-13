@@ -235,6 +235,9 @@ public class InterviewController {
         InterviewSession s = own(userId, id);
         Interview.Content c = content(s);
         if (!c.live() || c.ended() != null || c.report() != null) return dto(s);
+        // AWAY: the page counts frame exits and reports only the one that ends it
+        if ("AWAY".equals(body.kind()))
+            return save(s, new Interview.Content(c.source(), c.items(), "LIVE", Interview.cheatingReport(), c.violationCount(), "CHEATING"));
         int v = c.violationCount() + 1;
         boolean end = v >= 2;
         return save(s, new Interview.Content(c.source(), c.items(), "LIVE", end ? Interview.policyReport() : null, v, end ? "POLICY" : null));

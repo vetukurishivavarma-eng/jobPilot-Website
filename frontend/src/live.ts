@@ -17,6 +17,9 @@ export class Engine {
   stream: MediaStream | null = null
   /** fired after 2s of no face / head turned, and when the face is back */
   onAway: (away: boolean) => void = () => {}
+  /** fired once each time the face leaves the frame for 2s (no face at all, not a head turn); fires before onAway */
+  onGone: () => void = () => {}
+  goneNow = false
   /** fired when a phone is seen in 2 checks in a row (then quiet for 15s) */
   onPhone: () => void = () => {}
   level = 0 // mic level 0..1, for the meter
@@ -35,6 +38,7 @@ export class Engine {
   private objects: any = null
   private awaySince = 0
   private awayNow = false
+  private goneSince = 0
   private phoneHits = 0
   private phoneQuietUntil = 0
 
@@ -104,6 +108,9 @@ export class Engine {
       if (smile) c.smile++
     }
     const now = Date.now()
+    if (lm) { this.goneSince = 0; this.goneNow = false }
+    else if (!this.goneSince) this.goneSince = now
+    else if (now - this.goneSince > 2000 && !this.goneNow) { this.goneNow = true; this.onGone() }
     if (!away) { this.awaySince = 0; if (this.awayNow) { this.awayNow = false; this.onAway(false) } }
     else if (!this.awaySince) this.awaySince = now
     else if (now - this.awaySince > 2000 && !this.awayNow) { this.awayNow = true; this.onAway(true) }
