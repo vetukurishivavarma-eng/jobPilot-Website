@@ -69,5 +69,12 @@ jobpilot:
   # Paid live interviews (Razorpay). Both unset = billing off, live interviews free.
   razorpay-key-id: ${RAZORPAY_KEY_ID:}
   razorpay-key-secret: ${RAZORPAY_KEY_SECRET:}
+  # Razorpay dashboard -> Webhooks -> secret (events: payment.captured, order.paid; URL <PUBLIC_URL>/pay/webhook)
+  razorpay-webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+  # UPI QR payments, approved by hand (used instead of Razorpay while set): the owner's UPI ID and display name,
+  # and the emails allowed to approve payments (comma separated)
+  upi-id: ${UPI_ID:}
+  upi-name: ${UPI_NAME:JobPilot}
+  admin-emails: ${ADMIN_EMAILS:}
   # Auto mode runs for users who switched it on (Spring cron; "-" disables).
   auto-apply-cron: ${AUTO_APPLY_CRON:0 */15 * * * *}

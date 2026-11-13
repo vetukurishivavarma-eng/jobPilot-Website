@@ -12,6 +12,7 @@ import TailorPage from './pages/TailorPage'
 import ApplicationsPage, { ApplicationPage } from './pages/ApplicationsPage'
 import InterviewPage, { InterviewSessionPage } from './pages/InterviewPage'
 import InsightsPage from './pages/InsightsPage'
+import AdminPaymentsPage from './pages/AdminPaymentsPage'
 import LivePage from './pages/LivePage'
 import { DialogHost } from './dialog'
 
@@ -45,6 +46,7 @@ function App() {
               <Route path="/interview" element={<InterviewPage />} />
               <Route path="/interview/:id" element={<InterviewSessionPage />} />
               <Route path="/insights" element={<InsightsPage />} />
+              <Route path="/admin/payments" element={<AdminPaymentsPage />} />
             </Route>
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/resumes" element={<ResumesPage />} />

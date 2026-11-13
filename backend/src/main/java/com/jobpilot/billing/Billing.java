@@ -33,15 +33,30 @@ public class Billing {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final PurchaseRepository purchases;
-    private final String keyId, keySecret;
+    private final String keyId, keySecret, webhookSecret, upiId;
 
-    Billing(PurchaseRepository purchases, @Value("${jobpilot.razorpay-key-id:}") String keyId, @Value("${jobpilot.razorpay-key-secret:}") String keySecret) {
+    @org.springframework.beans.factory.annotation.Autowired
+    Billing(PurchaseRepository purchases, @Value("${jobpilot.razorpay-key-id:}") String keyId, @Value("${jobpilot.razorpay-key-secret:}") String keySecret,
+            @Value("${jobpilot.razorpay-webhook-secret:}") String webhookSecret, @Value("${jobpilot.upi-id:}") String upiId) {
         this.purchases = purchases;
         this.keyId = keyId.strip();
         this.keySecret = keySecret.strip();
+        this.webhookSecret = webhookSecret.strip();
+        this.upiId = upiId.strip();
     }
 
-    public boolean enabled() { return !keyId.isEmpty() && !keySecret.isEmpty(); }
+    Billing(PurchaseRepository purchases, String keyId, String keySecret, String webhookSecret) { this(purchases, keyId, keySecret, webhookSecret, ""); }
+
+    /** Payments are on (credits needed, free daily limits apply): UPI QR or Razorpay configured. */
+    public boolean enabled() { return upiOn() || razorpayOn(); }
+
+    /** UPI QR (approved by hand) wins over Razorpay while UPI_ID is set. */
+    public boolean upiOn() { return upiId.matches("[A-Za-z0-9._-]{2,256}@[A-Za-z0-9]{2,64}"); }
+
+    boolean razorpayOn() { return !keyId.isEmpty() && !keySecret.isEmpty(); }
+
+    /** UPI, RAZORPAY, or null when payments are off. */
+    public String mode() { return upiOn() ? "UPI" : razorpayOn() ? "RAZORPAY" : null; }
 
     /** Free accounts, per day (only while payments are on): AI-tailored resumes/letters, and auto-applied jobs. */
     public static final int FREE_TAILORED_PER_DAY = 5, FREE_AUTO_APPLY_PER_DAY = 5;
@@ -90,7 +105,7 @@ public class Billing {
     /** Creates a Razorpay order for the plan; the user pays on /pay/{purchaseId}. */
     @Transactional
     public Purchase order(UUID userId, Plan plan) {
-        if (!enabled()) throw new ApiException(HttpStatus.CONFLICT, "BILLING_OFF", "Payments aren't switched on yet; live interviews are free for now.");
+        if (!razorpayOn() || upiOn()) throw new ApiException(HttpStatus.CONFLICT, "BILLING_OFF", "Card/Razorpay payments aren't switched on; pay by UPI QR.");
         if (!plans(userId).contains(plan)) throw new ApiException(HttpStatus.BAD_REQUEST, "PLAN_UNAVAILABLE", "That plan isn't available for your account.");
         Purchase p = purchases.save(new Purchase(userId, plan));
         var body = JSON.createObjectNode().put("amount", plan.paise).put("currency", "INR").put("receipt", p.id.toString().substring(0, 36));
@@ -120,29 +135,65 @@ public class Billing {
     /** Razorpay checkout's success callback: signature = HMAC-SHA256(order_id|payment_id, key secret). Idempotent. */
     @Transactional
     public boolean confirm(String orderId, String paymentId, String signature) {
-        if (!enabled() || orderId == null || paymentId == null || signature == null) return false;
+        if (!razorpayOn() || orderId == null || paymentId == null || signature == null) return false;
         if (!MessageDigest.isEqual(hmac(orderId + "|" + paymentId).getBytes(StandardCharsets.US_ASCII), signature.getBytes(StandardCharsets.US_ASCII))) {
             log.warn("Razorpay signature mismatch for order {}", orderId);
             return false;
         }
         Purchase p = purchases.findByOrderId(orderId).orElse(null);
         if (p == null) return false;
-        if (p.status != Purchase.Status.PAID) {
-            p.status = Purchase.Status.PAID;
-            p.paymentId = paymentId;
-            p.paidAt = Instant.now();
-            Plan plan = Plan.valueOf(p.plan);
-            if (plan.validFor != null) p.expiresAt = p.paidAt.plus(plan.validFor);
-            purchases.save(p);
-            log.info("Purchase {} paid: {} ({} paise)", p.id, p.plan, p.amountPaise);
-        }
+        markPaid(p, paymentId, "checkout");
         return true;
     }
 
-    String hmac(String data) {
+    void markPaid(Purchase p, String paymentId, String via) {
+        if (p.status == Purchase.Status.PAID) return; // checkout callback and webhook both arrive: count once
+        p.status = Purchase.Status.PAID;
+        p.paymentId = paymentId;
+        p.paidAt = Instant.now();
+        Plan plan = Plan.valueOf(p.plan);
+        if (plan.validFor != null) p.expiresAt = p.paidAt.plus(plan.validFor);
+        purchases.save(p);
+        log.info("Purchase {} paid via {}: {} ({} paise)", p.id, via, p.plan, p.amountPaise);
+    }
+
+    public enum Hook { OK, BAD_SIGNATURE, OFF }
+
+    /**
+     * Razorpay's server-to-server webhook, so a payment counts even when the buyer closes the tab before checkout's
+     * callback runs. Signature = HMAC-SHA256(raw body, webhook secret). payment.captured / order.paid mark the
+     * order's purchase paid when the amount and currency match what we asked for; anything else is acknowledged.
+     */
+    @Transactional
+    public Hook webhook(String rawBody, String signature) {
+        if (!razorpayOn() || webhookSecret.isEmpty()) return Hook.OFF;
+        if (rawBody == null || signature == null
+                || !MessageDigest.isEqual(hmac(webhookSecret, rawBody).getBytes(StandardCharsets.US_ASCII), signature.strip().getBytes(StandardCharsets.US_ASCII))) {
+            log.warn("Razorpay webhook signature mismatch");
+            return Hook.BAD_SIGNATURE;
+        }
+        JsonNode root = JSON.readTree(rawBody);
+        String event = root.path("event").asString("");
+        if (!event.equals("payment.captured") && !event.equals("order.paid")) return Hook.OK;
+        JsonNode pay = root.path("payload").path("payment").path("entity");
+        String orderId = pay.path("order_id").asString(null), paymentId = pay.path("id").asString(null);
+        if (orderId == null) return Hook.OK;
+        Purchase p = purchases.findByOrderId(orderId).orElse(null);
+        if (p == null) { log.warn("Razorpay webhook for unknown order {}", orderId); return Hook.OK; }
+        if (pay.path("amount").asLong(-1) != p.amountPaise || !"INR".equals(pay.path("currency").asString(""))) {
+            log.warn("Razorpay webhook amount/currency mismatch for order {}: {} {}", orderId, pay.path("amount"), pay.path("currency"));
+            return Hook.OK;
+        }
+        markPaid(p, paymentId, "webhook " + event);
+        return Hook.OK;
+    }
+
+    String hmac(String data) { return hmac(keySecret, data); }
+
+    static String hmac(String secret, String data) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             return HexFormat.of().formatHex(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
             throw new IllegalStateException(e);

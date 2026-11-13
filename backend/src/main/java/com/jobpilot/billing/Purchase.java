@@ -12,7 +12,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "purchases")
 public class Purchase {
-    public enum Status { CREATED, PAID }
+    /** PENDING = UPI payment claimed with a UTR, waiting for an admin; REJECTED = the admin found no such payment. */
+    public enum Status { CREATED, PENDING, PAID, REJECTED }
 
     @Id
     UUID id = UUID.randomUUID();
@@ -45,4 +46,6 @@ interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
     List<Purchase> findByUserId(UUID userId);
     Optional<Purchase> findByOrderId(String orderId);
     boolean existsByUserIdAndStatus(UUID userId, Purchase.Status status);
+    boolean existsByPaymentId(String paymentId);
+    List<Purchase> findByStatusOrderByCreatedAtAsc(Purchase.Status status);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { api, ApiError, PRO_PERKS, type Billing, type InterviewPack, type InterviewReport, type InterviewSession, type InterviewSummary, type Job } from '../api'
+import { api, ApiError, PRO_PERKS, type Billing, type InterviewPack, type UpiOrder, type InterviewReport, type InterviewSession, type InterviewSummary, type Job } from '../api'
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
 const TYPE = { BEHAVIOURAL: 'Behavioural', TECHNICAL: 'Technical', ROLE: 'Role', INTRO: 'Opening', FOLLOW_UP: 'Follow-up', PROBE: 'Check-in' } as const
@@ -56,6 +56,7 @@ export default function InterviewPage() {
         : billing?.enabled && <p className="text-sm text-muted">{billing.credits} live interview{billing.credits === 1 ? '' : 's'} left.</p>}
 
       {billing?.proUntil && <p className="text-sm font-semibold text-signal">Pro until {new Date(billing.proUntil).toLocaleDateString()}</p>}
+      {billing?.admin && <p className="text-sm"><a className="underline" href="/admin/payments">Admin: payments to approve</a></p>}
       {packs.length > 0 && (
         <section className="card space-y-2">
           <div>
@@ -290,9 +291,19 @@ function Plans({ billing, onPaid }: { billing: Billing; onPaid: (b: Billing) => 
   const [busy, setBusy] = useState<string | null>(null)
   const [opened, setOpened] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [upi, setUpi] = useState<UpiOrder | null>(null)
+  const [utr, setUtr] = useState('')
+  const [sent, setSent] = useState(false)
   async function buy(plan: Billing['plans'][number]['id']) {
-    setBusy(plan); setError(null)
-    try { window.open((await api.buy(plan)).payUrl, '_blank', 'noopener'); setOpened(true) } catch (e) { setError(msg(e)) } finally { setBusy(null) }
+    setBusy(plan); setError(null); setSent(false); setUtr('')
+    try {
+      if (billing.mode === 'UPI') setUpi(await api.upiOrder(plan))
+      else { window.open((await api.buy(plan)).payUrl, '_blank', 'noopener'); setOpened(true) }
+    } catch (e) { setError(msg(e)) } finally { setBusy(null) }
+  }
+  async function claim() {
+    setBusy('utr'); setError(null)
+    try { onPaid(await api.claimUpi(upi!.purchaseId, utr.trim())); setSent(true) } catch (e) { setError(msg(e)) } finally { setBusy(null) }
   }
   async function check() {
     try { const b = await api.billing(); onPaid(b); if (b.credits === 0) setError("We haven't received the payment yet. If you paid, wait a few seconds and check again.") } catch (e) { setError(msg(e)) }
@@ -311,6 +322,22 @@ function Plans({ billing, onPaid }: { billing: Billing; onPaid: (b: Billing) => 
           </button>
         ))}
       </div>
+      {upi && !sent && (
+        <div className="flex flex-wrap items-start gap-4 rounded-lg border border-signal bg-signal-soft p-4">
+          <img src={upi.qrUrl} alt="UPI QR code" className="size-44 rounded bg-white p-1" />
+          <div className="min-w-0 flex-1 space-y-2 text-sm">
+            <p className="font-semibold">Pay ₹{upi.rupees} by UPI · {upi.label}</p>
+            <p className="text-muted">Scan with GPay, PhonePe, Paytm or any UPI app (on a phone: <a className="underline" href={upi.upiUrl}>open your UPI app</a>). Keep the note <b>JobPilot {upi.ref}</b>.</p>
+            <label className="block">
+              <span className="label">Then enter the 12-digit UPI reference (UTR)</span>
+              <input className="field" inputMode="numeric" maxLength={14} placeholder="e.g. 412345678901" value={utr} onChange={e => setUtr(e.target.value)} />
+            </label>
+            <button className="btn" disabled={busy === 'utr' || utr.replace(/\s/g, '').length !== 12} onClick={claim}>I've paid</button>
+          </div>
+        </div>
+      )}
+      {sent && <p className="text-sm font-semibold text-signal">Thanks! We'll confirm your payment within a few hours, then it unlocks automatically.</p>}
+      {(billing.pending ?? 0) > 0 && !sent && <p className="text-sm text-muted">{billing.pending} payment{billing.pending === 1 ? '' : 's'} being checked. It unlocks as soon as it's confirmed.</p>}
       {opened && <button className="btn-ghost" onClick={check}>I've paid, continue</button>}
       {error && <p className="text-sm text-danger">{error}</p>}
     </section>
