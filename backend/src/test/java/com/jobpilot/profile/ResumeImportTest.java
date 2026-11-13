@@ -76,6 +76,16 @@ class ResumeImportTest {
     }
 
     @Test
+    void dateRangesWrappedAcrossPdfLinesStillCount() {
+        // a two-column PDF put "Nov 2020 - Nov" and "2025" on separate lines: the whole 5-year job was dropped
+        var r = ResumeImport.ranges("EDUCATION\nNov 2020 - Nov\n2025\nWORK EXPERIENCE\nDec 2025 -\nPresent\n");
+        assertEquals(2, r.size());
+        assertEquals(java.time.LocalDate.of(2020, 11, 1), r.get(0)[0]);
+        assertEquals(java.time.LocalDate.of(2025, 11, 30), r.get(0)[1]);
+        assertNull(r.get(1)[1]);
+    }
+
+    @Test
     void dropsWhatIsNotInTheResume() {
         String liar = """
                 {"currentTitle":"Engineering Manager","location":"London",

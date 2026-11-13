@@ -244,7 +244,7 @@ final class ResumeImport {
         return out.stream().map(x -> cut(x, 600)).limit(15).toList();
     }
 
-    private static final String D = "(\\d{1,2}/\\d{4}|[A-Za-z]{3,9}\\.? \\d{4}|\\d{4})";
+    private static final String D = "(\\d{1,2}/\\d{4}|[A-Za-z]{3,9}\\.?\\s+\\d{4}|\\d{4})"; // \s+: PDFs wrap "Nov 2020 - Nov" / "2025"
     private static final Pattern RANGE = Pattern.compile("(?i)\\b" + D + "\\s*(?:[–—-]+|to)\\s*(" + D.substring(1, D.length() - 1) + "|present|current|now|till date)\\b");
 
     /** Date ranges written in the resume, in text order: {start, end or null for "Present"}. */
