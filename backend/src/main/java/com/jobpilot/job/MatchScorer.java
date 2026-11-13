@@ -163,7 +163,7 @@ public final class MatchScorer {
             stack("data scien|machine learning|\\bml\\b|\\bai engineer|deep learning|\\bnlp\\b|computer vision", "machine learning", "tensorflow", "pytorch"),
             stack("data engineer", "spark", "hadoop", "airflow"),
             stack("devops|\\bsre\\b|site reliability|cloud engineer|infrastructure engineer", "kubernetes", "terraform"),
-            stack("\\bsdet\\b|\\bqa\\b|quality (assurance|engineer)|\\btest(s|er|ers|ing)?\\b", "selenium"),
+            stack("\\bsdet\\b|\\bqa\\b|quality (assurance|engineer)|\\btest(s|er|ers|ing)?\\b", "selenium", "cypress", "playwright", "test automation", "appium", "testng"),
             stack("salesforce", "salesforce"),
             stack("\\bsap\\b", "sap"),
             stack("embedded|firmware", "c++"));
@@ -196,7 +196,8 @@ public final class MatchScorer {
         boolean developer = mine.stream().anyMatch(LANGUAGES::contains);
         if (developer) {
             // or a title naming a technology on their resume ("Java Engineer")
-            boolean devTitle = DEV_TITLE.matcher(title).find()
+            // or one of their roles (picked, or what their experience shows: "Data Engineer", "QA Engineer")
+            boolean devTitle = DEV_TITLE.matcher(title).find() || RoleMatch.matches(title, c.desiredRoles())
                     || STACKS.stream().anyMatch(st -> st.title().matcher(title).find() && st.skills().stream().anyMatch(mine::contains));
             if (!devTitle || NOT_DEV_TITLE.matcher(title).find()) return false;
         } else if (c.desiredRoles() != null && !c.desiredRoles().isEmpty() && !RoleMatch.matches(title, c.desiredRoles())) return false;

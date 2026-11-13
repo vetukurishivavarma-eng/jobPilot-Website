@@ -1,6 +1,10 @@
 # JobPilot AI — Progress
 
 
+## 2026-11-13: camera rules (deployed)
+- Looking away (head turn) while answering: Arjun says "Please look at the camera." (max every 20 s). Face out of frame 2 s = one exit (`Engine.onGone`): exits 1-2 spoken warnings, 3rd -> POST /violations {kind:AWAY} -> ended CHEATING + no-score report. Count lives on the page (reload resets it). Server strips both spoken lines from Whisper transcripts (`Interview.stripNudge`). 77 backend tests. Not phone-tested.
+- keep-awake GitHub cron had NOT fired after 1.5 h (only manual run) -> asked user to add UptimeRobot 5-min monitor on /actuator/health.
+
 ## 2026-11-13: leave a live interview (deployed, website 59aff7a / apk 4ec93a6)
 - LivePage header "End interview" (confirm) -> POST /interview/sessions/{id}/end -> ended QUIT + no-score report, recording dropped. Server also ends it (no LLM call) when a <=20-word answer matches `Interview.wantsToQuit` (mentions interview/session, "dont want this/to continue", or starts with close/end/stop/quit). Web page change, so the APK gets it without a rebuild. Not phone-tested.
 

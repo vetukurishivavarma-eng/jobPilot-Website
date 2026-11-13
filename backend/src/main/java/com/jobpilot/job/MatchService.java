@@ -72,7 +72,7 @@ public class MatchService {
             resumes.findByUserIdOrderByCreatedAtDesc(userId).stream().filter(Resume::isPrimary).findFirst()
                     .map(Resume::extractedText).filter(t -> !t.isBlank())
                     .ifPresent(t -> skills.addAll(JdParser.parse(null, t).skills()));
-            return new MatchScorer.Candidate(skills, p.yearsExperience(), p.desiredRoles(), p.desiredLocations(),
+            return new MatchScorer.Candidate(skills, p.yearsExperience(), ExperienceRoles.withExperience(p.desiredRoles(), p.experiences()), p.desiredLocations(),
                     p.willingToRelocate(), p.expectedSalary(), p.salaryCurrency());
         });
     }

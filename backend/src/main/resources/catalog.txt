@@ -75,3 +75,32 @@ ashby:elevenlabs ElevenLabs
 ashby:openai OpenAI
 ashby:atlan Atlan
 ashby:notion Notion
+
+# 2026-11-13 probe: more India openings (counts = India jobs seen then)
+greenhouse:fivetran Fivetran
+greenhouse:netskope Netskope
+greenhouse:sumologic Sumo Logic
+greenhouse:agoda Agoda
+greenhouse:anthropic Anthropic
+greenhouse:mixpanel Mixpanel
+greenhouse:yugabyte Yugabyte
+ashby:clickhouse ClickHouse
+ashby:harvey Harvey
+ashby:cursor Cursor
+# Workday: big employers, many non-software roles too (pharma, FMCG, banking, retail tech)
+workday:accenture.wd103/AccentureCareers Accenture
+workday:db.wd3/DBWebsite Deutsche Bank
+workday:target.wd5/targetcareers Target
+workday:cvshealth.wd1/CVS_Health_Careers CVS Health
+workday:lowes.wd5/LWS_External_CS Lowe's
+workday:gsk.wd5/GSKCareers GSK
+workday:philips.wd3/jobs-and-careers Philips
+workday:motorolasolutions.wd5/Careers Motorola Solutions
+workday:sanofi.wd3/SanofiCareers Sanofi
+workday:kla.wd1/Search KLA
+workday:pg.wd5/1000 Procter & Gamble
+workday:astrazeneca.wd3/Careers AstraZeneca
+workday:unilever.wd3/Unilever_Experienced_Professionals Unilever
+workday:boeing.wd1/EXTERNAL_CAREERS Boeing
+workday:sprinklr.wd1/careers Sprinklr
+workday:ciena.wd5/Careers Ciena
