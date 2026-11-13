@@ -133,6 +133,40 @@ class ApplyTest {
     }
 
     @Test
+    void workdayStepsAndUrls() {
+        String job = "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Thermal-Engineering-Program-Manager_JR2029603";
+        assertEquals(job + "/apply/autofillWithResume", ApplicationService.workdayApply(job + "/"));
+        // every step of the apply flow maps back to the job, with or without a locale in the path
+        assertEquals("Thermal-Engineering-Program-Manager_JR2029603", ApplicationService.workdaySegment(job + "/apply/autofillWithResume"));
+        assertEquals("Thermal-Engineering-Program-Manager_JR2029603", ApplicationService.workdaySegment(
+                "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Thermal-Engineering-Program-Manager_JR2029603/apply"));
+        assertNull(ApplicationService.workdaySegment(job), "the posting itself isn't an apply step");
+        assertNull(ApplicationService.workdaySegment("https://evil.example.com/x/job/a/b/apply"));
+
+        // My Information, as Workday labels it
+        List<String> yn = List.of("Yes", "No");
+        List<FormField> step = List.of(
+                new FormField("wd:formField-country", "Country", "SELECT", true, List.of("Australia", "India", "United States of America"), null, null),
+                new FormField("wd:formField-legalName--firstName", "First Name", "TEXT", true, List.of(), null, null),
+                new FormField("wd:formField-legalName--lastName", "Last Name", "TEXT", true, List.of(), null, null),
+                new FormField("wd:formField-email", "Email Address", "TEXT", true, List.of(), null, null),
+                new FormField("wd:formField-phoneType", "Phone Device Type", "SELECT", true, List.of("Home", "Mobile", "Work"), null, null),
+                new FormField("wd:formField-countryPhoneCode", "Country Phone Code", "SELECT", true, List.of("Afghanistan (+93)", "India (+91)"), null, null),
+                new FormField("wd:formField-phoneNumber", "Phone Number", "TEXT", true, List.of(), null, null),
+                new FormField("wd:formField-source", "How Did You Hear About Us?", "SELECT", true, List.of("Job Board", "NVIDIA Careers Website", "Referral"), null, null),
+                new FormField("wd:formField-candidateIsPreviousWorker", "Have you previously worked for NVIDIA?", "SELECT", true, yn, null, null));
+        List<FormField> out = Answerer.answer(step, ASHA, new Answerer.JobInfo("SDE", "NVIDIA", ""), Map.of(), null);
+        assertEquals("India", field(out, "Country").value(), "Bengaluru -> India");
+        assertEquals("Asha", field(out, "First Name").value());
+        assertEquals("asha@example.com", field(out, "Email Address").value());
+        assertEquals("Mobile", field(out, "Phone Device Type").value());
+        assertEquals("India (+91)", field(out, "Country Phone Code").value());
+        assertEquals("NVIDIA Careers Website", field(out, "How Did You Hear").value());
+        assertEquals("No", field(out, "previously worked").value());
+        assertTrue(out.stream().noneMatch(FormField::missing), out.stream().filter(FormField::missing).map(FormField::label).toList().toString());
+    }
+
+    @Test
     void screeningRulesAndSalary() {
         List<String> yn = List.of("Yes", "No");
         List<FormField> f = List.of(

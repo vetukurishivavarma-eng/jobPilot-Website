@@ -232,17 +232,16 @@ export function createApi(cfg: ApiConfig) {
  */
 /** missing = what blocks jobs (matching needs only these); later = asked when an application form needs it. */
 /** Sites whose application forms the agent fills. Everything else: the user applies on the company site. */
-export const AGENT_SOURCES: Job['source'][] = ['greenhouse', 'lever', 'ashby', 'smartrecruiters']
+export const AGENT_SOURCES: Job['source'][] = ['greenhouse', 'lever', 'ashby', 'smartrecruiters', 'workday']
 
 /** Can the agent apply to this job? If not, a one-line reason for the user. */
 export function agentSupport(j: Pick<Job, 'source' | 'closedAt'>): { can: boolean; why: string | null } {
   if (j.closedAt) return { can: false, why: 'This job is closed.' }
   if (AGENT_SOURCES.includes(j.source)) return { can: true, why: null }
   const why: Partial<Record<Job['source'], string>> = {
-    workday: 'Workday needs your own account on the company\'s site, so apply there.',
     adzuna: 'Found on a job board: it links to the company\'s own application.',
   }
-  return { can: false, why: why[j.source] ?? 'The agent fills Greenhouse, Lever, Ashby and SmartRecruiters forms. Apply on the company site.' }
+  return { can: false, why: why[j.source] ?? 'The agent fills Greenhouse, Lever, Ashby, SmartRecruiters and Workday forms. Apply on the company site.' }
 }
 
 export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[]; later: string[]; percent: number } {

@@ -1,5 +1,10 @@
 # JobPilot AI — Progress
 
+## 2026-11-14 ~00:00: SmartRecruiters agent apply (deployed; app 1.4.4 building)
+- In-page form reading: fill.js `scanPage()` (shadow-DOM walk; key = stable component id like `id:first-name-input`, else `label:<text>`, radios `name:`), POST /api/applications/{id}/page-form -> `ApplicationService.pageForm` (keeps earlier answers, answers new ones like any form) -> fill (composed events, `splSelect`, phone digits without +91, resume into every dropzone; first = Easy Apply resume reader for Experience/Education). Auto mode walks "Next" pages (max 5), needsYou if a page doesn't advance.
+- Discovery now stores applyUrl = oneclick form URL (`JobSources.smartRecruitersForm`, uuid inside) so `forPage` maps it (`findFirstBySourceAndApplyUrlContaining`). Existing SR jobs get it on the next discovery run (until then Apply with agent opens the posting, which redirects; forPage then fails -> run discovery).
+- Verified live: scanPage on Swiggy's real form = 9 fields, stable keys. NOT verified: resume upload/parse, Experience/Education required sections, page-2 screening questions, submit. Extension 0.4.0 (reload it).
+
 ## 2026-11-13 ~23:30: 1.4.3 RELEASED (github v1.4.3, link in WA self)
 - Update download = themed progress bar (`ProgressHost`/`progress()` in src/dialog.tsx, createDownloadResumable); shows from the NEXT update on.
 - `shared agentSupport()` / `AGENT_SOURCES` decide "Apply with agent" vs "Apply on company site" + reason (web JobsPage + app job screen).

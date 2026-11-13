@@ -93,6 +93,12 @@ final class Answerer {
         if (f.type().equals("SELECT") && l.matches(".*(willing|open) to relocat.*"))
             return option(f.options(), p.willingToRelocate() ? "Yes" : "No");
         if (f.type().equals("SELECT") && l.startsWith("what is your location") && p.location() != null) return country(f.options(), p.location());
+        // Workday's My Information step
+        if (f.type().equals("SELECT") && l.matches("country( of residence)?|country/territory") && p.location() != null) return country(f.options(), p.location());
+        if (f.type().equals("SELECT") && l.matches("country phone code|phone country code|country code") && p.location() != null && country(List.of("India"), p.location()) != null)
+            return f.options().stream().filter(o -> o.toLowerCase(Locale.ROOT).contains("india")).findFirst().orElse(null);
+        if (f.type().equals("SELECT") && l.matches("phone device type|phone type"))
+            return f.options().stream().filter(o -> o.toLowerCase(Locale.ROOT).contains("mobile")).findFirst().orElse(null);
         return null;
     }
 

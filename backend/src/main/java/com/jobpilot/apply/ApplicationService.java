@@ -75,9 +75,9 @@ public class ApplicationService {
         if (board.length == 2 && job.source().equals("greenhouse")) form = FormReader.greenhouse(board[1], job.externalId());
         else if (board.length == 2 && job.source().equals("lever")) form = FormReader.lever(board[1], job.externalId());
         else if (board.length == 2 && job.source().equals("ashby")) form = FormReader.ashby(board[1], job.externalId());
-        else if (job.source().equals("smartrecruiters")) form = List.of(); // read on the page by the filler (pageForm)
+        else if (job.source().equals("smartrecruiters") || job.source().equals("workday")) form = List.of(); // read on the page by the filler (pageForm)
         else throw new ApiException(HttpStatus.UNPROCESSABLE_CONTENT, "UNSUPPORTED_SITE",
-                    "The agent can apply on Greenhouse, Lever, Ashby and SmartRecruiters forms for now. Open the original posting to apply yourself.");
+                    "The agent can apply on Greenhouse, Lever, Ashby, SmartRecruiters and Workday forms for now. Open the original posting to apply yourself.");
 
         Answerer.Candidate c = candidate(userId);
         if (c.resumeId() == null)
@@ -166,12 +166,16 @@ public class ApplicationService {
     public Optional<Application> forPage(UUID userId, String url) {
         java.util.regex.Matcher sr = SR_FORM.matcher(url);
         if (sr.find()) return jobs.findFirstBySourceAndApplyUrlContaining("smartrecruiters", sr.group(1)).flatMap(j -> apps.findByUserIdAndJobId(userId, j.id()));
+        String wd = workdaySegment(url);
+        if (wd != null) return jobs.findFirstBySourceAndUrlContaining("workday", "/" + wd).flatMap(j -> apps.findByUserIdAndJobId(userId, j.id()));
         String[] job = jobOfPage(url);
         if (job == null) return Optional.empty();
         return jobs.findBySourceAndExternalId(job[0], job[1]).flatMap(j -> apps.findByUserIdAndJobId(userId, j.id()));
     }
 
     private static final java.util.regex.Pattern LEVER_PAGE = java.util.regex.Pattern.compile("^https://jobs\\.(?:eu\\.)?lever\\.co/[^/]+/([0-9a-f-]{36})");
+    /** A Workday apply step: .../job/<location>/<Title_REQ123>/apply[/...]; the segment before /apply is the job's. */
+    private static final java.util.regex.Pattern WD_APPLY = java.util.regex.Pattern.compile("^https://[a-z0-9-]+\\.wd\\d+\\.myworkdayjobs\\.com/.*/job/(?:.*/)?([^/?#]+)/apply(?:[/?#]|$)");
     private static final java.util.regex.Pattern SR_FORM = java.util.regex.Pattern.compile("^https://jobs\\.smartrecruiters\\.com/oneclick-ui/company/[^/]+/publication/([0-9a-f-]{36})");
     private static final java.util.regex.Pattern ASHBY_PAGE = java.util.regex.Pattern.compile("^https://jobs\\.ashbyhq\\.com/[^/]+/([0-9a-f-]{36})");
     private static final java.util.regex.Pattern GH_PAGE = java.util.regex.Pattern.compile("^https://(?:job-boards|boards)(?:\\.eu)?\\.greenhouse\\.io/[^/?]+/jobs/(\\d+)");
@@ -334,8 +338,19 @@ public class ApplicationService {
     }
 
     /** The ATS-hosted form, not the company careers page that embeds it. */
+    /** Workday's "Autofill with Resume" route: it reads the resume into My Experience. */
+    static String workdaySegment(String url) {
+        java.util.regex.Matcher m = WD_APPLY.matcher(url);
+        return m.find() ? m.group(1) : null;
+    }
+
+    static String workdayApply(String jobUrl) {
+        return jobUrl.replaceAll("[?#].*$", "").replaceAll("/+$", "") + "/apply/autofillWithResume";
+    }
+
     static String applyUrl(Job job) {
         if (job.source().equals("smartrecruiters") && job.applyUrl() != null) return job.applyUrl();
+        if (job.source().equals("workday") && job.url() != null) return workdayApply(job.url());
         return applyUrl(job.source(), job.board(), job.externalId(), job.url());
     }
 

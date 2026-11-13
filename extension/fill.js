@@ -5,6 +5,7 @@
 // Same field logic as the server's BrowserFiller, ported to the page.
 // SmartRecruiters can't be read in advance: here the questions are read off the page (inside its web components'
 // shadow DOM), the server answers them (POST page-form), then they're filled; its "Next" pages are walked in auto mode.
+// Workday works the same way, step by step (fields by data-automation-id); its sign-in step is always the user's.
 (() => {
   if (window.__jobpilot) return;
   window.__jobpilot = true;
@@ -46,6 +47,8 @@
 
   // ---------- shadow DOM ----------
   const SR = location.host === 'jobs.smartrecruiters.com' && location.pathname.includes('/oneclick-ui/');
+  const WD = /\.myworkdayjobs\.com$/.test(location.host) && location.pathname.includes('/apply');
+  const PAGED = SR || WD; // questions are read on the page, one step at a time
   function deepAll() {
     const out = [];
     const walk = (r) => { for (const el of r.querySelectorAll('*')) { out.push(el); if (el.shadowRoot) walk(el.shadowRoot) } };
@@ -90,8 +93,82 @@
     return fields;
   }
 
+  // ---------- Workday ----------
+  const wdSignIn = () => !!document.querySelector('[data-automation-id=signInContent], [data-automation-id=createAccountContent], input[type=password]');
+  const wdBox = (key) => document.querySelector(`[data-automation-id="${q(key.slice(3))}"]`);
+
+  // its dropdowns only render their options when open
+  async function wdOptions(b) {
+    b.click();
+    await sleep(600);
+    const id = b.getAttribute('aria-controls');
+    const list = (id && document.getElementById(id)) || document.querySelector('[role=listbox]');
+    const opts = list ? [...list.querySelectorAll('[role=option]')].map((o) => unstar(o.innerText)).filter((o) => o && !/^select one$/i.test(o)) : [];
+    (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(200);
+    if (b.getAttribute('aria-expanded') === 'true') b.click();
+    await sleep(200);
+    return opts;
+  }
+
+  /** The questions on the current Workday step (each sits in a data-automation-id="formField-…" box). */
+  async function scanWorkday() {
+    const fields = [], seen = new Set();
+    const add = (f) => { if (f.label && !seen.has(f.key)) { seen.add(f.key); fields.push(f) } };
+    for (const box of document.querySelectorAll('[data-automation-id^="formField-"]')) {
+      if (!visible(box) || box.parentElement?.closest('[data-automation-id^="formField-"]')) continue;
+      const raw = unstar((box.querySelector('legend, label') || {}).innerText || '');
+      const required = /\*$/.test(raw) || !!box.querySelector('[aria-required=true], [required]');
+      const label = raw.replace(/\*$/, '').trim();
+      const key = 'wd:' + box.getAttribute('data-automation-id');
+      const dd = box.querySelector('button[aria-haspopup=listbox]');
+      const radios = [...box.querySelectorAll('input[type=radio]')];
+      const checks = [...box.querySelectorAll('input[type=checkbox]')];
+      const text = box.querySelector('textarea, input[type=text], input[type=email], input[type=tel], input:not([type])');
+      if (box.querySelector('[data-automation-id=multiSelectContainer]')) continue; // search-and-pick lists (skills): the user's
+      if (dd) add({ key, label, type: 'SELECT', required, options: await wdOptions(dd) });
+      else if (radios.length) add({ key, label, type: 'SELECT', required, options: radios.map((r) => unstar(r.labels?.[0]?.innerText || r.value)) });
+      else if (checks.length) add({ key, label, type: 'MULTISELECT', required, options: checks.map((c) => unstar(c.labels?.[0]?.innerText || '') || label) });
+      else if (text) add({ key, label, type: text.tagName === 'TEXTAREA' ? 'TEXTAREA' : 'TEXT', required, options: [] });
+    }
+    const uploaded = document.querySelector('[data-automation-id=file-upload-successful], [data-automation-id=delete-file]');
+    if (!uploaded && document.querySelector('input[type=file]')) add({ key: 'file:resume', label: 'Resume', type: 'FILE', required: true, options: [] });
+    return fields;
+  }
+
+  async function wdChoose(f, values) {
+    const box = wdBox(f.key);
+    if (!box) return false;
+    const dd = box.querySelector('button[aria-haspopup=listbox]');
+    if (dd) {
+      dd.click();
+      await sleep(600);
+      const id = dd.getAttribute('aria-controls');
+      const list = (id && document.getElementById(id)) || document.querySelector('[role=listbox]');
+      const o = list && [...list.querySelectorAll('[role=option]')].find((x) => eq(unstar(x.innerText), values[0]));
+      if (!o) { dd.click(); return false }
+      o.click();
+      await sleep(500);
+      return true;
+    }
+    let done = 0;
+    for (const b of box.querySelectorAll('input[type=radio], input[type=checkbox]')) {
+      const text = unstar(b.labels?.[0]?.innerText || '') || f.label;
+      if (values.some((x) => eq(x, text) || eq(x, b.value))) { if (!b.checked) b.click(); done++ }
+    }
+    return done >= Math.min(1, values.length);
+  }
+
+  /** What's on the page now, to tell whether "Next" moved on. */
+  const pageSig = () => WD ? [...document.querySelectorAll('[data-automation-id^="formField-"]')].map((b) => b.getAttribute('data-automation-id')).join('|') + location.pathname
+    : SR ? JSON.stringify(scanPage().map((f) => f.key)) : location.href;
+
   // ---------- finding fields ----------
   function find(f) {
+    if (f.key.startsWith('wd:')) {
+      const box = wdBox(f.key);
+      return box?.querySelector('textarea, input[type=text], input[type=email], input[type=tel], input:not([type]), button[aria-haspopup=listbox]') || null;
+    }
     if (f.key.startsWith('id:')) {
       const host = deepAll().find((e) => e.id === f.key.slice(3));
       return host?.shadowRoot?.querySelector('input,textarea') || host || null;
@@ -177,6 +254,7 @@
   }
 
   async function choose(f, values) {
+    if (f.key.startsWith('wd:')) return wdChoose(f, values);
     if (f.key.startsWith('name:')) {
       let done = 0;
       for (const b of deepAll().filter((e) => e.tagName === 'INPUT' && e.name === f.key.slice(5))) {
@@ -226,7 +304,7 @@
       input.files = dt.files;
       input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
       input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-      if (SR) await sleep(6000); // let it read the resume before the next step
+      if (SR || WD) await sleep(6000); // let it read the resume before the next step
     }
     return true;
   }
@@ -253,9 +331,10 @@
       if (r.error) return quiet ? r.error : panel(r.error) || r.error;
       let app = r.data;
       if (app.status === 'SUBMITTED') return panel('You already applied to this job (JobPilot shows it as applied).') || 'already applied';
-      if (SR) {
+      if (WD && wdSignIn()) return panel('Sign in or create your account on this Workday site (once per company), then press Fill with JobPilot.') || 'sign in';
+      if (PAGED) {
         btn.textContent = 'Reading the form…';
-        const page = scanPage();
+        const page = WD ? await scanWorkday() : scanPage();
         const rr = await ask({ type: 'pageForm', id: app.id, fields: page });
         if (rr.error) return quiet ? rr.error : panel(rr.error) || rr.error;
         const keys = new Set(page.map((f) => f.key));
@@ -310,20 +389,22 @@
   function submitButton(re = /submit|send application/i) {
     const vis = (b) => (b.offsetParent || visible(b)) && !b.disabled;
     const all = SR ? deepAll().filter((e) => e.tagName === 'BUTTON' || e.tagName === 'SPL-BUTTON').filter(vis)
+      : WD ? [...document.querySelectorAll('[data-automation-id=bottom-navigation-next-button], [data-automation-id=pageFooterNextButton], button')].filter(vis)
       : [...document.querySelectorAll('#btn-submit, button[type=submit], input[type=submit], button')].filter(vis);
     return all.find((b) => re.test((b.innerText || b.value || b.getRootNode().host?.innerText || '').trim()));
   }
 
   async function auto(role) {
     let res = await fill(true);
-    for (let pageNo = 0; SR && Array.isArray(res) && !res.length && pageNo < 5; pageNo++) {
-      const next = !submitButton() && submitButton(/^next$/i);
+    for (let pageNo = 0; PAGED && Array.isArray(res) && !res.length && pageNo < 8; pageNo++) {
+      const next = !submitButton() && submitButton(/^(next|continue|save and continue)$/i);
       if (!next) break;
-      const before = JSON.stringify(scanPage().map((f) => f.key));
+      const before = pageSig();
       next.click();
-      await sleep(4000);
-      if (JSON.stringify(scanPage().map((f) => f.key)) === before)
-        return ask({ type: 'needsYou', reason: 'SmartRecruiters wants something on this page (often Experience or Education: press Add). Then press Next.' });
+      await sleep(WD ? 5000 : 4000);
+      if (pageSig() === before)
+        return ask({ type: 'needsYou', reason: SR ? 'SmartRecruiters wants something on this page (often Experience or Education: press Add). Then press Next.'
+          : 'Workday wants something on this step (see the red messages). Fix it, then press Save and Continue.' });
       res = await fill(true);
     }
     if (!Array.isArray(res)) return ask({ type: 'needsYou', reason: "Couldn't fill this form: " + res });
@@ -342,6 +423,21 @@
   // ---------- start ----------
   (async () => {
     if (await markIfThanks()) return;
+    if (WD) { // Workday: sign-in first (the user's), then the steps
+      for (let i = 0; i < 40 && !document.querySelector('[data-automation-id=applyFlowPage]'); i++) await sleep(500);
+      btn.onclick = () => fill();
+      document.documentElement.appendChild(host);
+      setInterval(() => { if (!host.isConnected) document.documentElement.appendChild(host) }, 1000);
+      const role = await ask({ type: 'role' });
+      if (!role.auto) return wdSignIn() ? panel('Sign in or create your account on this Workday site (once per company), then press Fill with JobPilot.') : fill(true);
+      if (wdSignIn()) {
+        ask({ type: 'needsYou', reason: 'Sign in or create your account on this Workday site (once per company). JobPilot carries on after that.' });
+        for (let i = 0; i < 600 && wdSignIn(); i++) await sleep(2000); // up to 20 minutes
+        if (wdSignIn()) return;
+        await sleep(3000);
+      }
+      return auto(role);
+    }
     // the form can render late (Greenhouse is a React app): wait for the resume upload field
     for (let i = 0; i < 40; i++) {
       if (document.querySelector('input[type=file]') || (SR && deepAll().some((e) => e.tagName === 'INPUT' && e.type === 'file'))) {
