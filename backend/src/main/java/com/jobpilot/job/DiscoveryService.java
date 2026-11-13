@@ -26,7 +26,7 @@ public class DiscoveryService {
         String key() { return ats.name().toLowerCase() + ":" + token; }
     }
 
-    static final int MAX_SEARCH_ROLES = 3, MAX_SEARCH_LOCATIONS = 3;
+    static final int MAX_SEARCH_ROLES = 3, MAX_SEARCH_LOCATIONS = 3, SOURCES_AT_ONCE = 3;
     static final List<Board> CATALOG = loadCatalog();
 
     private final ProfileRepository profiles;
@@ -107,9 +107,13 @@ public class DiscoveryService {
             }
         int total = tasks.size();
         onDone.accept(total, null);
+        // ponytail: 3 sources at a time; all 95 at once ran the 512 MB free instance out of memory (restart 2026-11-13)
+        Semaphore gate = new Semaphore(SOURCES_AT_ONCE);
         try (ExecutorService ex = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Callable<SourceResult>> reporting = tasks.stream().<Callable<SourceResult>>map(t -> () -> {
-                SourceResult r = t.call();
+                gate.acquire();
+                SourceResult r;
+                try { r = t.call(); } finally { gate.release(); }
                 onDone.accept(total, r);
                 return r;
             }).toList();

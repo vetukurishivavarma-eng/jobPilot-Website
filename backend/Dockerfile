@@ -13,4 +13,4 @@ COPY --from=build /src/target/backend-*.jar app.jar
 USER app
 ENV STORAGE_DIR=/data/resumes
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=65", "-jar", "app.jar"]
