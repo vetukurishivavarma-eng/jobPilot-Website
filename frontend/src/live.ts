@@ -11,6 +11,9 @@ const OBJECT_MODEL = 'https://storage.googleapis.com/mediapipe-models/object_det
 const pick = (types: string[]) => types.find(t => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) ?? ''
 type Counts = { frames: number; away: number; eyesOff: number; tense: number; smile: number; started: number; pasted: boolean }
 const fresh = (): Counts => ({ frames: 0, away: 0, eyesOff: 0, tense: 0, smile: 0, started: Date.now(), pasted: false })
+// Looking-away thresholds. Calibration knobs: tune on real phones (degrees from the starting pose; blendshape 0..1).
+const MAX_YAW = 25, MAX_PITCH = 20, EYES_SIDE = 0.5, EYES_DOWN = 0.5
+const CALIBRATION_FRAMES = 10 // ~2.5 s at 4 checks/s: the pose they hold while the interview starts
 const pct = (n: number, d: number) => (d ? Math.round((100 * n) / d) : 0)
 
 export class Engine {
@@ -39,6 +42,9 @@ export class Engine {
   private awaySince = 0
   private awayNow = false
   private goneSince = 0
+  private poseFrames = 0
+  private yaw0 = 0
+  private pitch0 = 0
   private phoneHits = 0
   private phoneQuietUntil = 0
 
@@ -72,6 +78,7 @@ export class Engine {
     const files = await FilesetResolver.forVisionTasks(`${VISION}/wasm`)
     this.face = await FaceLandmarker.createFromOptions(files, {
       baseOptions: { modelAssetPath: FACE_MODEL }, runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true, // head pose (yaw / pitch)
     })
     this.objects = await ObjectDetector.createFromOptions(files, {
       baseOptions: { modelAssetPath: OBJECT_MODEL }, runningMode: 'VIDEO', scoreThreshold: 0.5, maxResults: 3, categoryAllowlist: ['cell phone'],
@@ -92,14 +99,23 @@ export class Engine {
     const lm = r.faceLandmarks?.[0]
     const bs: Record<string, number> = {}
     for (const c of r.faceBlendshapes?.[0]?.categories ?? []) bs[c.categoryName] = c.score
-    let away = !lm
-    if (lm) { // head turned: nose tip vs the midpoint of the outer eye corners, in eye-widths
+    // head pose relative to how they sat at the start (a phone held low reads as "pitched" all the time)
+    let turned = false
+    const m: number[] | undefined = r.facialTransformationMatrixes?.[0]?.data
+    if (lm && m) {
+      const yaw = Math.asin(Math.max(-1, Math.min(1, -m[2]))) * 180 / Math.PI // column-major 4x4: R[2][0]
+      const pitch = Math.atan2(m[6], m[10]) * 180 / Math.PI // R[2][1], R[2][2]
+      if (this.poseFrames < CALIBRATION_FRAMES) { this.yaw0 += yaw / CALIBRATION_FRAMES; this.pitch0 += pitch / CALIBRATION_FRAMES; this.poseFrames++ }
+      else turned = Math.abs(yaw - this.yaw0) > MAX_YAW || Math.abs(pitch - this.pitch0) > MAX_PITCH
+    } else if (lm) { // no pose matrix: nose tip vs the midpoint of the outer eye corners, in eye-widths
       const l = lm[33], rr = lm[263], nose = lm[1]
-      away = Math.abs((nose.x - (l.x + rr.x) / 2) / Math.max(Math.abs(rr.x - l.x), 0.01)) > 0.35
+      turned = Math.abs((nose.x - (l.x + rr.x) / 2) / Math.max(Math.abs(rr.x - l.x), 0.01)) > 0.35
     }
+    // where the eyes point, from the blendshapes (0..1)
     const side = Math.max(((bs.eyeLookOutLeft ?? 0) + (bs.eyeLookInRight ?? 0)) / 2, ((bs.eyeLookInLeft ?? 0) + (bs.eyeLookOutRight ?? 0)) / 2)
     const down = ((bs.eyeLookDownLeft ?? 0) + (bs.eyeLookDownRight ?? 0)) / 2
-    const eyesOff = !away && (side > 0.55 || (!this.typing && down > 0.6)) // typing means looking down: don't count it
+    const eyesOff = !!lm && !turned && (side > EYES_SIDE || (!this.typing && down > EYES_DOWN)) // typing means looking down
+    const away = !lm || turned || eyesOff
     const tense = ((bs.browDownLeft ?? 0) + (bs.browDownRight ?? 0)) / 2 > 0.5 || ((bs.mouthPressLeft ?? 0) + (bs.mouthPressRight ?? 0)) / 2 > 0.5
     const smile = ((bs.mouthSmileLeft ?? 0) + (bs.mouthSmileRight ?? 0)) / 2 > 0.5
     if (this.measuring) {
