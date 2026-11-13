@@ -110,12 +110,12 @@ export type InterviewPack = { id: string; company: string; role: string; rounds:
 /** enabled = payments on; credits = live interviews left. Off: live interviews are free. */
 /**
  * proUntil: when the user's Pro ends (null = not Pro). mode: UPI (QR to the owner, approved by hand) | RAZORPAY | null (off).
- * pending: their UPI payments waiting for approval. admin: may approve payments.
+ * admin: may check UPI payments (they start at once; an admin marks them received or revokes them).
  */
-export type Billing = { enabled: boolean; credits: number; plans: BillingPlan[]; proUntil?: string | null; mode?: 'UPI' | 'RAZORPAY' | null; pending?: number; admin?: boolean }
+export type Billing = { enabled: boolean; credits: number; plans: BillingPlan[]; proUntil?: string | null; mode?: 'UPI' | 'RAZORPAY' | null; admin?: boolean }
 /** Pay upiUrl in any UPI app (or scan qrUrl, same origin as the API), then send the 12-digit UTR. */
 export type UpiOrder = { purchaseId: string; upiUrl: string; qrUrl: string; rupees: number; ref: string; label: string }
-export type PendingPayment = { id: string; email: string | null; plan: string; rupees: number; utr: string | null; ref: string; createdAt: string }
+export type PendingPayment = { id: string; email: string | null; plan: string; rupees: number; utr: string; ref: string; paidAt: string }
 export type InterviewSummary = { id: string; jobId: string | null; title: string; mode: 'SET' | 'LIVE'; answered: number; total: number; averageScore: number | null; readiness: number | null; createdAt: string }
 /** readiness 0-100; gaps = where the answers fall short of what interviewers expect at this level. */
 export type InterviewReport = { readiness: number | null; verdict: string | null; strengths: string[]; gaps: { area: string; detail: string | null }[]; focus: string[]; source: 'AI' | 'TEMPLATE' | 'POLICY' | 'QUIT' | 'CHEATING' }
@@ -232,8 +232,8 @@ export function createApi(cfg: ApiConfig) {
   upiOrder: (plan: BillingPlan['id']) => request<UpiOrder>('POST', '/billing/upi', { plan }),
   claimUpi: (purchaseId: string, utr: string) => request<Billing>('POST', `/billing/upi/${purchaseId}/utr`, { utr }),
   pendingPayments: () => request<PendingPayment[]>('GET', '/admin/payments'),
-  approvePayment: (id: string) => request<{ ok: boolean }>('POST', `/admin/payments/${id}/approve`),
-  rejectPayment: (id: string) => request<{ ok: boolean }>('POST', `/admin/payments/${id}/reject`),
+  paymentReceived: (id: string) => request<{ ok: boolean }>('POST', `/admin/payments/${id}/received`),
+  revokePayment: (id: string) => request<{ ok: boolean }>('POST', `/admin/payments/${id}/revoke`),
   answerInterview: (id: string, index: number, answer: string, signals?: Signals) =>
     request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}`, { answer, signals }),
   deleteInterview: (id: string) => request<void>('DELETE', `/interview/sessions/${id}`),

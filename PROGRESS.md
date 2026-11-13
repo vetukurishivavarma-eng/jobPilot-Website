@@ -1,5 +1,11 @@
 # JobPilot AI — Progress
 
+## 2026-11-14: packs, Pro, UPI QR payments (deployed; app 1.5.0 building)
+- **Company interview packs** (`interview/CompanyPack`): TCS, Infosys, Wipro, Accenture, Cognizant, Capgemini, HCLTech; 8-question plan + style from publicly described rounds; session title = pack title (how turns find it); `Interview.focus(f, job, n)`. Live-tested TCS: follow-up on the candidate's project, as planned.
+- **Pro** Rs 199 / 30 days incl. 8 live interviews; free accounts (only while payments are on): 5 AI-tailored docs/day (402 PRO_REQUIRED), auto-apply max 5/day.
+- **Payments = UPI QR, approved by hand** (user's choice 2026-11-14): set on Render `UPI_ID` (+ `UPI_NAME`, `ADMIN_EMAILS`) -> payments ON (and free limits ON). Buyer: QR (web, /pay/{id}/qr.svg) or UPI app (phone) -> 12-digit UTR -> PENDING + email to admins -> approve at /admin/payments (website; link shows on Interview page for admins). Razorpay + webhook (/pay/webhook, RAZORPAY_WEBHOOK_SECRET) built but unused while UPI_ID is set.
+- NOT done: UPI_ID / ADMIN_EMAILS not set yet (user to give their UPI ID); nothing paid end to end.
+
 ## 2026-11-14: Workday agent apply (deployed; app 1.4.5 building)
 - Apply link = job.url + /apply/autofillWithResume (`ApplicationService.workdayApply`); `workdaySegment(url)` maps any apply step (locale or not) back to the job (`findFirstBySourceAndUrlContaining`).
 - fill.js WD mode: sign-in is the user's (signInContent/password field; auto waits up to 20 min, then continues); `scanWorkday()` reads `formField-*` boxes (dropdown options by opening them via `wdOptions`, radios, checkboxes, text; multiSelectContainer skipped) -> page-form -> fill (`wdChoose`) -> "Save and Continue" loop (max 8, stuck -> needsYou). Answerer: Country, Country Phone Code, Phone Device Type.

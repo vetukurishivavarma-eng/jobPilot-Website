@@ -56,7 +56,7 @@ export default function InterviewPage() {
         : billing?.enabled && <p className="text-sm text-muted">{billing.credits} live interview{billing.credits === 1 ? '' : 's'} left.</p>}
 
       {billing?.proUntil && <p className="text-sm font-semibold text-signal">Pro until {new Date(billing.proUntil).toLocaleDateString()}</p>}
-      {billing?.admin && <p className="text-sm"><a className="underline" href="/admin/payments">Admin: payments to approve</a></p>}
+      {billing?.admin && <p className="text-sm"><a className="underline" href="/admin/payments">Admin: UPI payments to check</a></p>}
       {packs.length > 0 && (
         <section className="card space-y-2">
           <div>
@@ -336,8 +336,7 @@ function Plans({ billing, onPaid }: { billing: Billing; onPaid: (b: Billing) => 
           </div>
         </div>
       )}
-      {sent && <p className="text-sm font-semibold text-signal">Thanks! We'll confirm your payment within a few hours, then it unlocks automatically.</p>}
-      {(billing.pending ?? 0) > 0 && !sent && <p className="text-sm text-muted">{billing.pending} payment{billing.pending === 1 ? '' : 's'} being checked. It unlocks as soon as it's confirmed.</p>}
+      {sent && <p className="text-sm font-semibold text-signal">Thanks! Your plan is active. (We check every payment; one that never arrived is cancelled.)</p>}
       {opened && <button className="btn-ghost" onClick={check}>I've paid, continue</button>}
       {error && <p className="text-sm text-danger">{error}</p>}
     </section>

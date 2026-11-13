@@ -109,7 +109,7 @@ class BillingTest {
     }
 
     @Test
-    void upiQrPaymentCountsOnlyAfterAnAdminApproves() {
+    void upiPaymentStartsAtOnceAndARevokeEndsIt() {
         Billing on = new Billing(purchases, "", "", "", "owner.pay@okhdfcbank");
         UpiPayments upi = new UpiPayments(purchases, on, mailer, "owner.pay@okhdfcbank", "JobPilot", "Boss@Example.com");
         assertTrue(on.enabled() && on.upiOn());
@@ -129,22 +129,22 @@ class BillingTest {
         assertThrows(ApiException.class, () -> upi.claim(UUID.randomUUID(), p.id, "123456789012", "x@example.com"), "someone else's payment");
         String utr = String.valueOf(100000000000L + (System.nanoTime() % 899999999999L));
         upi.claim(u, p.id, utr, "buyer@example.com");
-        assertEquals(0, on.credits(u), "nothing counts before approval");
-        assertNull(on.proUntil(u));
-        assertEquals(1, upi.pendingFor(u));
-        assertTrue(upi.pending().stream().anyMatch(x -> x.id.equals(p.id)));
+        assertEquals(8, on.credits(u), "trust first: active at once");
+        assertNotNull(on.proUntil(u));
+        assertTrue(upi.toCheck().stream().anyMatch(x -> x.id.equals(p.id)), "listed for the admin to check");
 
         Purchase other = upi.start(u, Plan.WEEKLY);
         assertEquals("UTR_USED", assertThrows(ApiException.class, () -> upi.claim(u, other.id, utr, "buyer@example.com")).code);
 
-        upi.approve(p.id);
-        assertEquals(8, on.credits(u));
-        assertNotNull(on.proUntil(u));
-        assertEquals("NOT_PENDING", assertThrows(ApiException.class, () -> upi.approve(p.id)).code);
+        upi.received(p.id);
+        assertTrue(upi.toCheck().stream().noneMatch(x -> x.id.equals(p.id)));
+        assertEquals("NOT_TO_CHECK", assertThrows(ApiException.class, () -> upi.revoke(p.id)).code, "checked ones stay");
 
-        Purchase third = upi.start(u, Plan.WEEKLY);
-        upi.claim(u, third.id, String.valueOf(Long.parseLong(utr) + 1 > 999999999999L ? 100000000001L : Long.parseLong(utr) + 1), "buyer@example.com");
-        upi.reject(third.id);
-        assertEquals(8, on.credits(u), "rejected adds nothing");
+        String utr2 = String.valueOf(Long.parseLong(utr) + 1 > 999999999999L ? 100000000001L : Long.parseLong(utr) + 1);
+        upi.claim(u, other.id, utr2, "buyer@example.com");
+        assertEquals(12, on.credits(u));
+        upi.revoke(other.id);
+        assertEquals(8, on.credits(u), "revoked: its credits stop counting");
+        assertEquals("REVOKED", assertThrows(ApiException.class, () -> upi.claim(u, other.id, utr2, "buyer@example.com")).code);
     }
 }

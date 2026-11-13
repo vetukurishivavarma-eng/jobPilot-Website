@@ -12,8 +12,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "purchases")
 public class Purchase {
-    /** PENDING = UPI payment claimed with a UTR, waiting for an admin; REJECTED = the admin found no such payment. */
-    public enum Status { CREATED, PENDING, PAID, REJECTED }
+    /** REVOKED = a UPI payment the admin found never arrived: its plan ends at once. */
+    public enum Status { CREATED, PAID, REVOKED }
 
     @Id
     UUID id = UUID.randomUUID();
@@ -29,6 +29,8 @@ public class Purchase {
     Instant expiresAt;
     Instant createdAt = Instant.now();
     Instant paidAt;
+    /** UPI: when an admin saw the money arrive (null = not checked yet). */
+    Instant checkedAt;
 
     protected Purchase() {}
 
@@ -47,5 +49,5 @@ interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
     Optional<Purchase> findByOrderId(String orderId);
     boolean existsByUserIdAndStatus(UUID userId, Purchase.Status status);
     boolean existsByPaymentId(String paymentId);
-    List<Purchase> findByStatusOrderByCreatedAtAsc(Purchase.Status status);
+    List<Purchase> findByStatusAndPaymentIdStartingWithAndCheckedAtIsNullOrderByPaidAtAsc(Purchase.Status status, String prefix);
 }

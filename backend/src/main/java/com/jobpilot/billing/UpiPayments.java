@@ -20,9 +20,10 @@ import java.time.Instant;
 import java.util.*;
 
 /**
- * Payment by UPI QR to the owner's own UPI ID, checked by hand: the buyer pays the exact amount, enters the 12-digit
- * UPI reference (UTR), and an admin (ADMIN_EMAILS) approves it after seeing the money arrive; only then does the
- * purchase count. On when UPI_ID is set; Razorpay stays built but unused.
+ * Payment by UPI QR to the owner's own UPI ID, trust first: the buyer pays the exact amount and enters the 12-digit
+ * UPI reference (UTR); the plan starts at once (JobPilot can't see the owner's bank). Admins (ADMIN_EMAILS) get an
+ * email and, on /admin/payments, mark it received or revoke it (the plan ends). A UTR works once. On when UPI_ID is
+ * set; Razorpay stays built but unused.
  */
 @Service
 public class UpiPayments {
@@ -84,7 +85,7 @@ public class UpiPayments {
         }
     }
 
-    /** The buyer paid: record the UTR and ask an admin to check it. A UTR can only be claimed once. */
+    /** The buyer paid: the plan starts now; admins are asked to check the UTR. A UTR can only be claimed once. */
     @Transactional
     public Purchase claim(UUID userId, UUID purchaseId, String utr, String buyerEmail) {
         Purchase p = purchases.findById(purchaseId).filter(x -> x.userId.equals(userId) && x.orderId != null && x.orderId.startsWith("upi_"))
@@ -92,39 +93,45 @@ public class UpiPayments {
         String u = utr == null ? "" : utr.replaceAll("\\s", "");
         if (!u.matches("\\d{12}")) throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_UTR", "Enter the 12-digit UPI reference number (UTR) from your UPI app's payment details.");
         if (p.status == Purchase.Status.PAID) return p;
+        if (p.status == Purchase.Status.REVOKED) throw new ApiException(HttpStatus.CONFLICT, "REVOKED", "This payment was not received. Start a new one.");
         if (purchases.existsByPaymentId("upi:" + u)) throw new ApiException(HttpStatus.CONFLICT, "UTR_USED", "That UPI reference was already used for another payment.");
-        p.paymentId = "upi:" + u;
-        p.status = Purchase.Status.PENDING;
-        purchases.save(p);
-        log.info("UPI payment claimed: purchase {} plan {} UTR {}", p.id, p.plan, u);
+        billing.markPaid(p, "upi:" + u, "upi (trust first)");
         for (String a : admins)
-            mailer.send(a, "JobPilot: check a UPI payment of Rs " + p.amountPaise / 100,
+            mailer.send(a, "JobPilot: UPI payment of Rs " + p.amountPaise / 100 + " to check",
                     "<p>" + esc(buyerEmail) + " says they paid <b>Rs " + p.amountPaise / 100 + "</b> for " + esc(Plan.valueOf(p.plan).label)
-                            + ".</p><p>UTR: <b>" + u + "</b> &middot; note: JobPilot " + ref(p) + "</p><p>Approve it in JobPilot: Admin &rarr; Payments.</p>");
+                            + ". Their plan is active now.</p><p>UTR: <b>" + u + "</b> &middot; note: JobPilot " + ref(p)
+                            + "</p><p>Check your UPI app. Not there? Revoke it in JobPilot: /admin/payments.</p>");
         return p;
     }
 
-    public List<Purchase> pending() { return purchases.findByStatusOrderByCreatedAtAsc(Purchase.Status.PENDING); }
-
-    /** Admin saw the money arrive: the purchase counts from now. */
-    @Transactional
-    public void approve(UUID purchaseId) {
-        Purchase p = purchases.findById(purchaseId).orElseThrow(() -> ApiException.notFound("Payment"));
-        if (p.status != Purchase.Status.PENDING) throw new ApiException(HttpStatus.CONFLICT, "NOT_PENDING", "This payment isn't waiting for approval.");
-        billing.markPaid(p, p.paymentId, "upi approval");
+    /** UPI payments not checked yet, oldest first. */
+    public List<Purchase> toCheck() {
+        return purchases.findByStatusAndPaymentIdStartingWithAndCheckedAtIsNullOrderByPaidAtAsc(Purchase.Status.PAID, "upi:");
     }
 
-    /** No such payment arrived: the buyer can try again with the right UTR. */
-    @Transactional
-    public void reject(UUID purchaseId) {
+    private Purchase unchecked(UUID purchaseId) {
         Purchase p = purchases.findById(purchaseId).orElseThrow(() -> ApiException.notFound("Payment"));
-        if (p.status != Purchase.Status.PENDING) throw new ApiException(HttpStatus.CONFLICT, "NOT_PENDING", "This payment isn't waiting for approval.");
-        p.status = Purchase.Status.REJECTED;
+        if (p.status != Purchase.Status.PAID || p.paymentId == null || !p.paymentId.startsWith("upi:") || p.checkedAt != null)
+            throw new ApiException(HttpStatus.CONFLICT, "NOT_TO_CHECK", "This payment was already checked.");
+        return p;
+    }
+
+    /** Admin saw the money arrive. */
+    @Transactional
+    public void received(UUID purchaseId) {
+        Purchase p = unchecked(purchaseId);
+        p.checkedAt = Instant.now();
         purchases.save(p);
     }
 
-    public long pendingFor(UUID userId) {
-        return purchases.findByUserId(userId).stream().filter(p -> p.status == Purchase.Status.PENDING).count();
+    /** The money never arrived: the plan ends now (credits and Pro stop counting). */
+    @Transactional
+    public void revoke(UUID purchaseId) {
+        Purchase p = unchecked(purchaseId);
+        p.status = Purchase.Status.REVOKED;
+        p.checkedAt = Instant.now();
+        purchases.save(p);
+        log.info("UPI payment revoked: purchase {} ({})", p.id, p.paymentId);
     }
 
     Optional<Purchase> find(UUID id) { return purchases.findById(id); }

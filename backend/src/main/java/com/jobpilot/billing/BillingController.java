@@ -19,13 +19,13 @@ public class BillingController {
     public record PlanDto(String id, String label, int rupees, int interviews, Integer days) {}
     /**
      * proUntil: when the user's Pro ends (null = not Pro); mode: UPI (QR, approved by hand) | RAZORPAY | null (off);
-     * pending: UPI payments of theirs waiting for approval; admin: may approve payments.
+     * admin: may check UPI payments.
      */
-    public record Status(boolean enabled, int credits, List<PlanDto> plans, java.time.Instant proUntil, String mode, long pending, boolean admin) {}
+    public record Status(boolean enabled, int credits, List<PlanDto> plans, java.time.Instant proUntil, String mode, boolean admin) {}
     /** A UPI payment to make: open upiUrl on a phone, or scan qrUrl's QR; then send the UTR. */
     public record UpiOrder(UUID purchaseId, String upiUrl, String qrUrl, int rupees, String ref, String label) {}
     public record Utr(@NotNull @jakarta.validation.constraints.Size(max = 30) String utr) {}
-    public record PendingDto(UUID id, String email, String plan, int rupees, String utr, String ref, java.time.Instant createdAt) {}
+    public record PendingDto(UUID id, String email, String plan, int rupees, String utr, String ref, java.time.Instant paidAt) {}
     public record OrderRequest(@NotNull Plan plan) {}
     public record Order(UUID purchaseId, String payUrl) {}
     public record Verify(String razorpay_order_id, String razorpay_payment_id, String razorpay_signature) {}
@@ -50,7 +50,7 @@ public class BillingController {
     public Status status(@AuthenticationPrincipal UUID userId) {
         return new Status(billing.enabled(), billing.credits(userId), billing.plans(userId).stream()
                 .map(p -> new PlanDto(p.name(), p.label, p.paise / 100, p.interviews, p.validFor == null ? null : (int) p.validFor.toDays())).toList(),
-                billing.proUntil(userId), billing.mode(), upi.pendingFor(userId), upi.isAdmin(emailOf(userId)));
+                billing.proUntil(userId), billing.mode(), upi.isAdmin(emailOf(userId)));
     }
 
     // ------------------------------------------------------------ UPI QR, approved by hand
@@ -78,21 +78,21 @@ public class BillingController {
     @GetMapping("/api/admin/payments")
     public List<PendingDto> pending(@AuthenticationPrincipal UUID userId) {
         requireAdmin(userId);
-        return upi.pending().stream().map(p -> new PendingDto(p.id, emailOf(p.userId), Plan.valueOf(p.plan).label, p.amountPaise / 100,
-                p.paymentId == null ? null : p.paymentId.replaceFirst("^upi:", ""), UpiPayments.ref(p), p.createdAt)).toList();
+        return upi.toCheck().stream().map(p -> new PendingDto(p.id, emailOf(p.userId), Plan.valueOf(p.plan).label, p.amountPaise / 100,
+                p.paymentId.replaceFirst("^upi:", ""), UpiPayments.ref(p), p.paidAt)).toList();
     }
 
-    @PostMapping("/api/admin/payments/{id}/approve")
-    public Map<String, Boolean> approve(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
+    @PostMapping("/api/admin/payments/{id}/received")
+    public Map<String, Boolean> received(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
         requireAdmin(userId);
-        upi.approve(id);
+        upi.received(id);
         return Map.of("ok", true);
     }
 
-    @PostMapping("/api/admin/payments/{id}/reject")
-    public Map<String, Boolean> reject(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
+    @PostMapping("/api/admin/payments/{id}/revoke")
+    public Map<String, Boolean> revoke(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
         requireAdmin(userId);
-        upi.reject(id);
+        upi.revoke(id);
         return Map.of("ok", true);
     }
 
