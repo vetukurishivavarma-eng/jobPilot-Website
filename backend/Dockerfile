@@ -13,4 +13,6 @@ COPY --from=build /src/target/backend-*.jar app.jar
 USER app
 ENV STORAGE_DIR=/data/resumes
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=65", "-jar", "app.jar"]
+# Render free = 512 MB for the WHOLE process: heap 55% (~280 MB) + capped metaspace / code cache / thread stacks.
+# SerialGC: least memory overhead on 1 CPU. TieredStopAtLevel=1: smaller code cache and a faster cold start.
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-XX:MaxRAMPercentage=55", "-XX:MaxMetaspaceSize=192m", "-XX:ReservedCodeCacheSize=48m", "-XX:TieredStopAtLevel=1", "-Xss512k", "-XX:+ExitOnOutOfMemoryError", "-jar", "app.jar"]
