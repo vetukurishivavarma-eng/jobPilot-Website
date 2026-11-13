@@ -38,10 +38,16 @@ public class TailorController {
 
     private final TailorService service;
     private final JobRepository jobs;
+    private final com.jobpilot.billing.Billing billing;
 
-    TailorController(TailorService service, JobRepository jobs) {
+    TailorController(TailorService service, JobRepository jobs, com.jobpilot.billing.Billing billing) {
         this.service = service;
         this.jobs = jobs;
+        this.billing = billing;
+    }
+
+    private void allowance(UUID userId) {
+        billing.allow(userId, service.tailoredToday(userId), com.jobpilot.billing.Billing.FREE_TAILORED_PER_DAY, "AI-tailored resumes and cover letters");
     }
 
     @GetMapping("/jobs/{jobId}/documents")
@@ -57,11 +63,13 @@ public class TailorController {
     /** (Re)generates the tailored resume. Replaces any earlier version for this job. */
     @PostMapping("/jobs/{jobId}/documents/resume")
     public DocDto tailorResume(@AuthenticationPrincipal UUID userId, @PathVariable UUID jobId) {
+        allowance(userId);
         return DocDto.of(service.generateResume(userId, jobId));
     }
 
     @PostMapping("/jobs/{jobId}/documents/letter")
     public DocDto writeLetter(@AuthenticationPrincipal UUID userId, @PathVariable UUID jobId) {
+        allowance(userId);
         return DocDto.of(service.generateLetter(userId, jobId));
     }
 

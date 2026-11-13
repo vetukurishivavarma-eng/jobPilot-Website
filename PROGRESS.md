@@ -1,5 +1,10 @@
 # JobPilot AI — Progress
 
+## 2026-11-14: Workday agent apply (deployed; app 1.4.5 building)
+- Apply link = job.url + /apply/autofillWithResume (`ApplicationService.workdayApply`); `workdaySegment(url)` maps any apply step (locale or not) back to the job (`findFirstBySourceAndUrlContaining`).
+- fill.js WD mode: sign-in is the user's (signInContent/password field; auto waits up to 20 min, then continues); `scanWorkday()` reads `formField-*` boxes (dropdown options by opening them via `wdOptions`, radios, checkboxes, text; multiSelectContainer skipped) -> page-form -> fill (`wdChoose`) -> "Save and Continue" loop (max 8, stuck -> needsYou). Answerer: Country, Country Phone Code, Phone Device Type.
+- Verified: live NVIDIA sign-in step structure; URL mapping + My Information answers (tests). NOT verified: everything after sign-in (needs an account), Google sign-in inside the phone WebView (Google blocks embedded sign-in: use email sign-in there).
+
 ## 2026-11-14 ~00:00: SmartRecruiters agent apply (deployed; app 1.4.4 building)
 - In-page form reading: fill.js `scanPage()` (shadow-DOM walk; key = stable component id like `id:first-name-input`, else `label:<text>`, radios `name:`), POST /api/applications/{id}/page-form -> `ApplicationService.pageForm` (keeps earlier answers, answers new ones like any form) -> fill (composed events, `splSelect`, phone digits without +91, resume into every dropzone; first = Easy Apply resume reader for Experience/Education). Auto mode walks "Next" pages (max 5), needsYou if a page doesn't advance.
 - Discovery now stores applyUrl = oneclick form URL (`JobSources.smartRecruitersForm`, uuid inside) so `forPage` maps it (`findFirstBySourceAndApplyUrlContaining`). Existing SR jobs get it on the next discovery run (until then Apply with agent opens the posting, which redirects; forPage then fails -> run discovery).

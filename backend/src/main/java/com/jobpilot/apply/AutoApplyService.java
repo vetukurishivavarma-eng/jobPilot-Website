@@ -34,10 +34,12 @@ public class AutoApplyService {
     private final UserJobRepository links;
     private final MatchService matcher;
     private final TransactionTemplate tx;
+    private final com.jobpilot.billing.Billing billing;
     private final Set<UUID> running = ConcurrentHashMap.newKeySet();
 
     AutoApplyService(AutoApplySettingsRepository settings, ApplicationRepository apps, ApplicationService service,
-                     UserJobRepository links, MatchService matcher, TransactionTemplate tx) {
+                     UserJobRepository links, MatchService matcher, TransactionTemplate tx, com.jobpilot.billing.Billing billing) {
+        this.billing = billing;
         this.settings = settings;
         this.apps = apps;
         this.service = service;
@@ -70,12 +72,14 @@ public class AutoApplyService {
         AutoApplySettings s = settings(userId);
         List<String> notes = new ArrayList<>();
         int prepared = 0, needInput = 0, submitted = 0, waiting = 0, failed = 0;
-        long remaining = s.dailyLimit - submittedToday(userId);
+        // free accounts: at most FREE_AUTO_APPLY_PER_DAY a day (only while payments are on); Pro: their own setting
+        int limit = billing.unlimited(userId) ? s.dailyLimit : Math.min(s.dailyLimit, com.jobpilot.billing.Billing.FREE_AUTO_APPLY_PER_DAY);
+        long remaining = limit - submittedToday(userId);
 
         // 1. best-matching open jobs that have no application yet
         List<UUID> picks = pick(userId, s.minScore, Math.max(0, remaining));
         int considered = picks.size();
-        if (remaining <= 0) notes.add("Daily limit of " + s.dailyLimit + " reached; nothing new was prepared.");
+        if (remaining <= 0) notes.add("Daily limit of " + limit + " reached; nothing new was prepared." + (limit < s.dailyLimit ? " Pro lifts the free limit of " + limit + "." : ""));
 
         // 2. prepare them
         for (UUID jobId : picks) {

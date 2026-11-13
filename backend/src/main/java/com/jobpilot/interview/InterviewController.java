@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Mock interview coach: practice sessions per job or role, an answer at a time, scored feedback. Open practice, not a live-interview aid. */
@@ -32,7 +33,9 @@ import java.util.UUID;
 @RequestMapping("/api/interview/sessions")
 public class InterviewController {
 
-    public record Start(UUID jobId, @Size(max = 120) String role, Boolean live) {}
+    /** pack: a CompanyPack id (TCS, Infosys...) instead of a job or role. */
+    public record Start(UUID jobId, @Size(max = 120) String role, Boolean live, @Size(max = 40) String pack) {}
+    public record PackDto(String id, String company, String role, String rounds) {}
     /** signals: what the camera saw during this answer (LIVE only, optional). */
     public record Answer(@NotBlank @Size(max = 5000) String answer, Interview.Signals signals) {}
     public record Violation(@NotBlank @Size(max = 20) String kind) {}
@@ -91,14 +94,23 @@ public class InterviewController {
     @PostMapping
     public SessionDto start(@AuthenticationPrincipal UUID userId, @Valid @RequestBody Start body) {
         Tailor.JobInfo job;
-        if (body.jobId() != null) job = tailor.jobInfo(userId, body.jobId()); // 404 unless it's in the user's job list
+        Optional<CompanyPack> pack = body.pack() == null || body.pack().isBlank() ? Optional.empty() : CompanyPack.byId(body.pack().strip());
+        if (body.pack() != null && !body.pack().isBlank() && pack.isEmpty()) throw ApiException.notFound("Interview pack");
+        if (pack.isPresent()) job = pack.get().job();
+        else if (body.jobId() != null) job = tailor.jobInfo(userId, body.jobId()); // 404 unless it's in the user's job list
         else if (body.role() != null && !body.role().isBlank()) job = new Tailor.JobInfo(body.role().strip(), null, null, List.of());
         else throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Pick a job or type a role to practise for");
         if (Boolean.TRUE.equals(body.live())) billing.consume(userId); // 402 without a paid interview (when billing is on)
-        InterviewSession s = new InterviewSession(userId, body.jobId(), Interview.cut(Interview.roleLine(job), 300));
+        InterviewSession s = new InterviewSession(userId, pack.isPresent() ? null : body.jobId(), Interview.cut(pack.map(CompanyPack::title).orElse(Interview.roleLine(job)), 300));
         s.content = Interview.JSON.writeValueAsString(Boolean.TRUE.equals(body.live()) ? Interview.liveStart()
                 : Interview.questions(tailor.facts(userId), job, ollama::generateJson));
         return dto(sessions.save(s));
+    }
+
+    /** Company interview packs (TCS, Infosys, Wipro...): pass an id as Start.pack. */
+    @GetMapping("/packs")
+    public List<PackDto> packs() {
+        return CompanyPack.all().stream().map(p -> new PackDto(p.id(), p.company(), p.role(), p.rounds())).toList();
     }
 
     @GetMapping("/{id}")
@@ -244,7 +256,8 @@ public class InterviewController {
     }
 
     private Tailor.JobInfo job(UUID userId, InterviewSession s) {
-        return s.jobId != null ? tailor.jobInfo(userId, s.jobId) : new Tailor.JobInfo(s.title, null, null, List.of());
+        if (s.jobId != null) return tailor.jobInfo(userId, s.jobId);
+        return CompanyPack.forTitle(s.title).map(CompanyPack::job).orElseGet(() -> new Tailor.JobInfo(s.title, null, null, List.of()));
     }
 
     private SessionDto save(InterviewSession s, Interview.Content c) {

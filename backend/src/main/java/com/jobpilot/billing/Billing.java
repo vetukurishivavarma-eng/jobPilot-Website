@@ -42,6 +42,27 @@ public class Billing {
     }
 
     public boolean enabled() { return !keyId.isEmpty() && !keySecret.isEmpty(); }
+
+    /** Free accounts, per day (only while payments are on): AI-tailored resumes/letters, and auto-applied jobs. */
+    public static final int FREE_TAILORED_PER_DAY = 5, FREE_AUTO_APPLY_PER_DAY = 5;
+
+    /** When the user's Pro ends (null = not Pro). */
+    public Instant proUntil(UUID userId) {
+        Instant now = Instant.now();
+        return purchases.findByUserId(userId).stream()
+                .filter(p -> p.status == Purchase.Status.PAID && Plan.PRO.name().equals(p.plan) && p.expiresAt != null && p.expiresAt.isAfter(now))
+                .map(p -> p.expiresAt).max(Instant::compareTo).orElse(null);
+    }
+
+    /** No daily limits: Pro, or payments not switched on yet (everything is free then). */
+    public boolean unlimited(UUID userId) { return !enabled() || proUntil(userId) != null; }
+
+    /** 402 PRO_REQUIRED once a free account has used today's allowance of something. */
+    public void allow(UUID userId, long usedToday, int freePerDay, String what) {
+        if (usedToday < freePerDay || unlimited(userId)) return;
+        throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "PRO_REQUIRED",
+                "Free accounts get " + freePerDay + " " + what + " a day. Go Pro for no daily limits, or come back tomorrow.");
+    }
     String keyId() { return keyId; }
 
     public int credits(UUID userId) {
@@ -51,7 +72,7 @@ public class Billing {
 
     /** Plans this user can buy now: FIRST only before their first payment, and then instead of SINGLE. */
     public List<Plan> plans(UUID userId) {
-        return purchases.existsByUserIdAndStatus(userId, Purchase.Status.PAID) ? List.of(Plan.SINGLE, Plan.WEEKLY) : List.of(Plan.FIRST, Plan.WEEKLY);
+        return purchases.existsByUserIdAndStatus(userId, Purchase.Status.PAID) ? List.of(Plan.SINGLE, Plan.WEEKLY, Plan.PRO) : List.of(Plan.FIRST, Plan.WEEKLY, Plan.PRO);
     }
 
     /** Uses one credit (the soonest-expiring first). Free when billing is off. 402 when there are none. */

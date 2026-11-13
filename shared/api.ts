@@ -102,9 +102,14 @@ export type InterviewSession = {
   /** phone seen on camera (1 = warned); ended POLICY = stopped for a phone, QUIT = the candidate ended it; done = all questions answered; recording deleted at recordingExpiresAt */
   violations: number; ended: 'POLICY' | 'QUIT' | 'CHEATING' | null; done: boolean; recordingExpiresAt: string | null; createdAt: string; updatedAt: string
 }
-export type BillingPlan = { id: 'FIRST' | 'SINGLE' | 'WEEKLY'; label: string; rupees: number; interviews: number; days: number | null }
+export type BillingPlan = { id: 'FIRST' | 'SINGLE' | 'WEEKLY' | 'PRO'; label: string; rupees: number; interviews: number; days: number | null }
+/** What Pro adds on top of its live interviews (free accounts: 5 tailored documents and 5 auto-applies a day). */
+export const PRO_PERKS = 'Unlimited AI-tailored resumes and cover letters, auto-apply up to your own daily limit, every company interview pack live'
+/** A mock interview in the style of a big recruiter's rounds (TCS, Infosys...). */
+export type InterviewPack = { id: string; company: string; role: string; rounds: string }
 /** enabled = payments on; credits = live interviews left. Off: live interviews are free. */
-export type Billing = { enabled: boolean; credits: number; plans: BillingPlan[] }
+/** proUntil: when the user's Pro ends (null = not Pro). */
+export type Billing = { enabled: boolean; credits: number; plans: BillingPlan[]; proUntil?: string | null }
 export type InterviewSummary = { id: string; jobId: string | null; title: string; mode: 'SET' | 'LIVE'; answered: number; total: number; averageScore: number | null; readiness: number | null; createdAt: string }
 /** readiness 0-100; gaps = where the answers fall short of what interviewers expect at this level. */
 export type InterviewReport = { readiness: number | null; verdict: string | null; strengths: string[]; gaps: { area: string; detail: string | null }[]; focus: string[]; source: 'AI' | 'TEMPLATE' | 'POLICY' | 'QUIT' | 'CHEATING' }
@@ -208,7 +213,8 @@ export function createApi(cfg: ApiConfig) {
   listInterviews: () => request<InterviewSummary[]>('GET', '/interview/sessions'),
   getInterview: (id: string) => request<InterviewSession>('GET', `/interview/sessions/${id}`),
   /** Pass a jobId from the user's job list, or a role to practise for. */
-  startInterview: (s: ({ jobId: string } | { role: string }) & { live?: boolean }) => request<InterviewSession>('POST', '/interview/sessions', s),
+  startInterview: (s: ({ jobId: string } | { role: string } | { pack: string }) & { live?: boolean }) => request<InterviewSession>('POST', '/interview/sessions', s),
+  interviewPacks: () => request<InterviewPack[]>('GET', '/interview/sessions/packs'),
   answerInterviewAudio: (id: string, index: number, fd: FormData) => request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}/audio`, fd),
   interviewViolation: (id: string, kind: 'PHONE' | 'AWAY') => request<InterviewSession>('POST', `/interview/sessions/${id}/violations`, { kind }),
   endInterview: (id: string) => request<InterviewSession>('POST', `/interview/sessions/${id}/end`),

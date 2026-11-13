@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { api, ApiError, type Billing, type InterviewReport, type InterviewSession, type InterviewSummary, type Job } from '../api'
+import { api, ApiError, PRO_PERKS, type Billing, type InterviewPack, type InterviewReport, type InterviewSession, type InterviewSummary, type Job } from '../api'
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
 const TYPE = { BEHAVIOURAL: 'Behavioural', TECHNICAL: 'Technical', ROLE: 'Role', INTRO: 'Opening', FOLLOW_UP: 'Follow-up', PROBE: 'Check-in' } as const
@@ -13,6 +13,8 @@ export default function InterviewPage() {
   const [history, setHistory] = useState<InterviewSummary[] | null>(null)
   const [jobId, setJobId] = useState('')
   const [role, setRole] = useState('')
+  const [pack, setPack] = useState('')
+  const [packs, setPacks] = useState<InterviewPack[]>([])
   const [live, setLive] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -21,6 +23,7 @@ export default function InterviewPage() {
 
   useEffect(() => {
     api.billing().then(setBilling).catch(() => {})
+    api.interviewPacks().then(setPacks).catch(() => {})
     api.listJobs({ status: 'ACTIVE', q: '', includeClosed: false, page: 0, sort: 'match' }).then(p => setJobs(p.items)).catch(e => setError(msg(e)))
     api.listInterviews().then(setHistory).catch(e => setError(msg(e)))
   }, [])
@@ -29,7 +32,7 @@ export default function InterviewPage() {
     e?.preventDefault()
     setBusy(true); setError(null)
     try {
-      const x = await api.startInterview({ ...(jobId ? { jobId } : { role: role.trim() }), live })
+      const x = await api.startInterview({ ...(pack ? { pack } : jobId ? { jobId } : { role: role.trim() }), live })
       nav(live ? `/live/${x.id}` : `/interview/${x.id}`)
     } catch (e) {
       if (e instanceof ApiError && e.code === 'PAYMENT_REQUIRED') { setNeedsPlan(true); api.billing().then(setBilling).catch(() => {}) }
@@ -52,10 +55,29 @@ export default function InterviewPage() {
         ? <Plans billing={billing} onPaid={b => { setBilling(b); if (b.credits > 0 && needsPlan) { setNeedsPlan(false); start() } }} />
         : billing?.enabled && <p className="text-sm text-muted">{billing.credits} live interview{billing.credits === 1 ? '' : 's'} left.</p>}
 
+      {billing?.proUntil && <p className="text-sm font-semibold text-signal">Pro until {new Date(billing.proUntil).toLocaleDateString()}</p>}
+      {packs.length > 0 && (
+        <section className="card space-y-2">
+          <div>
+            <p className="font-semibold">Company interview packs</p>
+            <p className="text-xs text-muted">In the style of each company's fresher rounds, from how they're publicly described. Fresh questions every time, never leaked ones.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {packs.map(p => (
+              <button key={p.id} type="button" onClick={() => { setPack(pack === p.id ? '' : p.id); setJobId(''); setRole('') }}
+                className={`rounded-full border px-3 py-1.5 text-sm ${pack === p.id ? 'border-signal bg-signal text-white' : 'border-line bg-white hover:border-ink'}`}
+                title={`${p.role}: ${p.rounds}`}>
+                {p.company} <span className="text-xs opacity-75">· {p.rounds}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <form className="card grid gap-3 md:grid-cols-[1fr_auto_1fr_auto] md:items-end" onSubmit={start}>
         <label className="block">
           <span className="label">A job from your list</span>
-          <select className="field" value={jobId} onChange={e => { setJobId(e.target.value); if (e.target.value) setRole('') }}>
+          <select className="field" value={jobId} onChange={e => { setJobId(e.target.value); if (e.target.value) { setRole(''); setPack('') } }}>
             <option value="">Choose a job…</option>
             {jobs.map(j => <option key={j.id} value={j.id}>{j.title} · {j.company}</option>)}
           </select>
@@ -64,9 +86,9 @@ export default function InterviewPage() {
         <label className="block">
           <span className="label">A role</span>
           <input className="field" placeholder="e.g. Backend Engineer" maxLength={120} value={role}
-            onChange={e => { setRole(e.target.value); if (e.target.value) setJobId('') }} />
+            onChange={e => { setRole(e.target.value); if (e.target.value) { setJobId(''); setPack('') } }} />
         </label>
-        <button className="btn" disabled={busy || (!jobId && !role.trim())}>{busy ? 'Starting…' : live ? 'Start interview' : 'Start practice'}</button>
+        <button className="btn" disabled={busy || (!jobId && !role.trim() && !pack)}>{busy ? 'Starting…' : pack ? `Start ${packs.find(p => p.id === pack)?.company} interview` : live ? 'Start interview' : 'Start practice'}</button>
         <label className="flex items-center gap-2 text-sm text-muted md:col-span-4">
           <input type="checkbox" checked={!live} onChange={e => setLive(!e.target.checked)} />
           Practice set instead: 6 fixed questions, feedback after each answer
@@ -277,13 +299,14 @@ function Plans({ billing, onPaid }: { billing: Billing; onPaid: (b: Billing) => 
   }
   return (
     <section className="card space-y-3">
-      <p className="font-semibold">Get your live interview</p>
+      <p className="font-semibold">Get your live interview, or go Pro</p>
       <div className="grid gap-3 sm:grid-cols-2">
         {billing.plans.map(p => (
           <button key={p.id} onClick={() => buy(p.id)} disabled={!!busy}
-            className="rounded-lg border border-line bg-white p-4 text-left hover:border-ink disabled:opacity-60">
-            <p className="font-display text-2xl font-bold">₹{p.rupees}</p>
+            className={`rounded-lg border bg-white p-4 text-left hover:border-ink disabled:opacity-60 ${p.id === 'PRO' ? 'border-signal ring-2 ring-signal-soft sm:col-span-2' : 'border-line'}`}>
+            <p className="font-display text-2xl font-bold">₹{p.rupees}{p.id === 'PRO' && <span className="ml-2 rounded bg-signal px-2 py-0.5 align-middle text-xs text-white">PRO</span>}</p>
             <p className="text-sm">{p.label}</p>
+            {p.id === 'PRO' && <p className="text-xs text-signal">{PRO_PERKS}</p>}
             <p className="text-xs text-muted">{p.interviews} interview{p.interviews === 1 ? '' : 's'}{p.days ? `, use within ${p.days} days` : ''} · report + recording</p>
           </button>
         ))}

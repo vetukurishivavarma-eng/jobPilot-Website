@@ -325,4 +325,16 @@ class InterviewTest {
         mvc().perform(multipart(base + "/answers/0/audio").file(new org.springframework.mock.web.MockMultipartFile("audio", "a.webm", "audio/webm", new byte[100]))
                 .header("Authorization", auth)).andExpect(status().isServiceUnavailable());
     }
+
+    @Test
+    void companyPacksSteerTheQuestions() {
+        CompanyPack tcs = CompanyPack.byId("TCS").orElseThrow();
+        assertEquals("Systems Engineer (fresher) at TCS", tcs.title());
+        assertEquals(tcs, CompanyPack.forTitle(tcs.title()).orElseThrow(), "a running session finds its pack from its title");
+        assertTrue(Interview.focus(FACTS, tcs.job(), 4).contains("coding logic"), "the pack's own plan");
+        assertEquals(Interview.focus(FACTS, 4), Interview.focus(FACTS, JOB, 4), "ordinary jobs keep the level plan");
+        String prompt = Interview.nextPrompt(FACTS, tcs.job(), List.of(new Interview.Item("INTRO", "Tell me about yourself", "I built a payments app", null)), 7);
+        assertTrue(prompt.contains("why TCS") && prompt.contains("never claim to have seen real interview reports"));
+        for (CompanyPack p : CompanyPack.all()) assertEquals(Interview.LIVE_QUESTIONS, p.plan().size(), p.id() + ": one focus per question");
+    }
 }

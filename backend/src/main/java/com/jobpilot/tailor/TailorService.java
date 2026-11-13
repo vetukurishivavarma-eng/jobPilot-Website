@@ -47,6 +47,12 @@ public class TailorService {
         this.tx = tx;
     }
 
+    /** AI-tailored resumes and letters the user (re)generated today (India time): the free daily allowance. */
+    long tailoredToday(UUID userId) {
+        java.time.ZoneId ist = java.time.ZoneId.of("Asia/Kolkata");
+        return docs.countByUserIdAndUpdatedAtAfter(userId, java.time.LocalDate.now(ist).atStartOfDay(ist).toInstant());
+    }
+
     TailoredDocument generateResume(UUID userId, UUID jobId) {
         Tailor.Facts f = facts(userId);
         if (f.experiences().isEmpty())

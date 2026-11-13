@@ -36,4 +36,5 @@ interface TailoredDocumentRepository extends JpaRepository<TailoredDocument, UUI
     Optional<TailoredDocument> findByUserIdAndJobIdAndKind(UUID userId, UUID jobId, TailoredDocument.Kind kind);
     List<TailoredDocument> findByUserIdAndJobId(UUID userId, UUID jobId);
     Optional<TailoredDocument> findByIdAndUserId(UUID id, UUID userId);
+    long countByUserIdAndUpdatedAtAfter(UUID userId, Instant after);
 }

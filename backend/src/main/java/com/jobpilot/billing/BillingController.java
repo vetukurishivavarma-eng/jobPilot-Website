@@ -17,7 +17,8 @@ import static com.jobpilot.shared.Mailer.esc;
 @RestController
 public class BillingController {
     public record PlanDto(String id, String label, int rupees, int interviews, Integer days) {}
-    public record Status(boolean enabled, int credits, List<PlanDto> plans) {}
+    /** proUntil: when the user's Pro ends (null = not Pro). */
+    public record Status(boolean enabled, int credits, List<PlanDto> plans, java.time.Instant proUntil) {}
     public record OrderRequest(@NotNull Plan plan) {}
     public record Order(UUID purchaseId, String payUrl) {}
     public record Verify(String razorpay_order_id, String razorpay_payment_id, String razorpay_signature) {}
@@ -29,7 +30,8 @@ public class BillingController {
     @GetMapping("/api/billing")
     public Status status(@AuthenticationPrincipal UUID userId) {
         return new Status(billing.enabled(), billing.credits(userId), billing.plans(userId).stream()
-                .map(p -> new PlanDto(p.name(), p.label, p.paise / 100, p.interviews, p.validFor == null ? null : (int) p.validFor.toDays())).toList());
+                .map(p -> new PlanDto(p.name(), p.label, p.paise / 100, p.interviews, p.validFor == null ? null : (int) p.validFor.toDays())).toList(),
+                billing.proUntil(userId));
     }
 
     @PostMapping("/api/billing/orders")

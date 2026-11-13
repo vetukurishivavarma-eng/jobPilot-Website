@@ -129,7 +129,7 @@ public final class Interview {
                 NEXT QUESTION MUST BE ABOUT: %s
                 Tie it to what the candidate actually said where that fits. Never repeat an earlier question.%s
                 """.formatted(level(f), profileText(f), roleLine(job),
-                job.description() == null ? "(none)" : cut(job.description(), 1200), t, focus(f, n), mood);
+                job.description() == null ? "(none)" : cut(job.description(), 1200), t, focus(f, job, n), mood);
     }
 
     /** Model unavailable or unreadable: the standard set, in order. */
@@ -482,6 +482,11 @@ public final class Interview {
             "a core technical fundamental the job relies on, at depth (concurrency, database internals, or the main framework)",
             "a behavioural question about ownership, mentoring a junior, or pushing back on a decision (STAR)",
             "why this company and role, and how they would add value in the first months");
+
+    /** A company pack's own plan when the session is one, else the level plan. */
+    static String focus(Tailor.Facts f, Tailor.JobInfo job, int n) {
+        return CompanyPack.forJob(job).map(p -> p.plan().get(Math.min(Math.max(n, 1), p.plan().size() - 1))).orElseGet(() -> focus(f, n));
+    }
 
     static String focus(Tailor.Facts f, int n) {
         Double y = years(f);
