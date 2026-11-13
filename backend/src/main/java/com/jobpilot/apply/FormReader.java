@@ -68,6 +68,51 @@ final class FormReader {
         return out;
     }
 
+    private static final java.util.regex.Pattern BOARD_ID = java.util.regex.Pattern.compile("^[A-Za-z0-9._-]{1,100}$");
+
+    /**
+     * Ashby: the questions its own public job page loads (unauthenticated GraphQL on jobs.ashbyhq.com). Input names on
+     * the page are the field paths, so the browser filler finds them by key.
+     */
+    static List<FormField> ashby(String org, String jobId) {
+        if (!BOARD_ID.matcher(org).matches() || !BOARD_ID.matcher(jobId).matches()) throw new IllegalArgumentException("Bad Ashby job: " + org + "/" + jobId);
+        String q = "query ApiJobPosting($organizationHostedJobsPageName: String!, $jobPostingId: String!) { jobPosting(organizationHostedJobsPageName: "
+                + "$organizationHostedJobsPageName, jobPostingId: $jobPostingId) { applicationForm { sections { fieldEntries { ... on FormFieldEntry { field isRequired } } } } } }";
+        String body = JSON.writeValueAsString(java.util.Map.of("operationName", "ApiJobPosting", "query", q,
+                "variables", java.util.Map.of("organizationHostedJobsPageName", org, "jobPostingId", jobId)));
+        return parseAshby(SafeHttp.postJson("https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobPosting", body));
+    }
+
+    static List<FormField> parseAshby(String json) {
+        JsonNode form = JSON.readTree(json).path("data").path("jobPosting").path("applicationForm");
+        if (form.isMissingNode() || form.isNull()) throw new SafeHttp.FetchException(422, "Could not read this Ashby application form");
+        List<FormField> out = new ArrayList<>();
+        for (JsonNode section : form.path("sections"))
+            for (JsonNode e : section.path("fieldEntries")) {
+                JsonNode f = e.path("field");
+                String path = f.path("path").asString("");
+                if (path.isEmpty() || f.path("isDeactivated").asBoolean(false)) continue;
+                String label = clean(f.path("title").asString(""));
+                List<String> options = new ArrayList<>();
+                for (JsonNode v : f.path("selectableValues")) options.add(clean(v.path("label").asString("")));
+                String type = switch (f.path("type").asString("")) {
+                    case "LongText" -> "TEXTAREA";
+                    case "File" -> "FILE";
+                    case "ValueSelect" -> "SELECT";
+                    case "MultiValueSelect" -> "MULTISELECT";
+                    case "Boolean" -> { options = List.of("Yes", "No"); yield "SELECT"; }
+                    default -> "TEXT"; // String, Email, Phone, Url, Number, Date, Location
+                };
+                out.add(new FormField(path, label, type, e.path("isRequired").asBoolean(false), options, null, null));
+            }
+        return out;
+    }
+
+    /** Labels carry stray format characters ("LinkedIn\u200b Url"): drop them, collapse spaces. */
+    static String clean(String s) {
+        return s.replaceAll("[\\p{Cf}\\uFFFD]", "").replace('\u00A0', ' ').replaceAll("\\s+", " ").strip();
+    }
+
     static List<FormField> parseLever(String html) {
         Document doc = Jsoup.parse(html);
         Element form = doc.selectFirst("form#application-form, form[action*=apply], form");

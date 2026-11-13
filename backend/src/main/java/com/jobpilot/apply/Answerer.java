@@ -75,7 +75,7 @@ final class Answerer {
         if (k.equals("last_name") || l.equals("last name")) return names.length > 1 ? names[1] : null;
         if (k.equals("name") || l.equals("full name") || l.equals("name")) return c.fullName();
         if (k.equals("email") || l.equals("email") || l.equals("email address")) return c.email();
-        if (k.equals("phone") || l.matches("(mobile|phone)( number)?")) return p.phone();
+        if (k.equals("phone") || l.matches("(mobile|phone|contact|contact phone)( number| no\\.?)?")) return p.phone();
         if (k.contains("linkedin") || l.contains("linkedin")) return p.linkedinUrl();
         if (k.contains("github") || l.contains("github")) return p.githubUrl();
         if (k.contains("portfolio") || l.matches(".*\\b(portfolio|personal website|website)\\b.*")) return p.portfolioUrl();

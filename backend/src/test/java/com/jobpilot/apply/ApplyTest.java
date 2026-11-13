@@ -90,6 +90,22 @@ class ApplyTest {
     }
 
     @Test
+    void readsAndAnswersAnAshbyForm() throws Exception {
+        List<FormField> form = FormReader.parseAshby(fixture("ashby-spotdraft-form.json")); // real SpotDraft form, 2026-11-13
+        assertEquals(List.of("_systemfield_name", "_systemfield_email", "_systemfield_resume"), form.subList(0, 3).stream().map(FormField::key).toList());
+        assertEquals("FILE", field(form, "Resume").type());
+        assertTrue(form.stream().allMatch(f -> f.label().equals(FormReader.clean(f.label()))), "no stray format characters in labels");
+        List<FormField> out = Answerer.answer(form, ASHA, new Answerer.JobInfo("SDE", "SpotDraft", ""), Map.of(), null);
+        assertEquals("Asha Rao Kumar", field(out, "Name").value());
+        assertEquals("+91 98765 43210", field(out, "Contact").value(), "'Contact Number' is the phone");
+        assertEquals("https://linkedin.com/in/asha", field(out, "Linkedin").value());
+        assertEquals("Bengaluru", field(out, "Location").value());
+        assertEquals("Asha CV", field(out, "Resume").value());
+        assertTrue(out.stream().noneMatch(FormField::missing), "nothing left for the user: " + out.stream().filter(FormField::missing).map(FormField::label).toList());
+        assertEquals("https://jobs.ashbyhq.com/spotdraft/abc/application", ApplicationService.applyUrl("ashby", "ashby:spotdraft", "abc", null));
+    }
+
+    @Test
     void screeningRulesAndSalary() {
         List<String> yn = List.of("Yes", "No");
         List<FormField> f = List.of(

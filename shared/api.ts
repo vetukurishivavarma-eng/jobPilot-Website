@@ -42,7 +42,7 @@ export type Job = {
 export type JobPage = { items: Job[]; total: number; page: number; size: number }
 export type SourceResult = { source: 'company' | 'adzuna'; label: string; fetched: number; linked: number; error: string | null }
 export type DiscoveryProgress = { running: boolean; done: number; total: number; results: SourceResult[] }
-export type Ats = 'GREENHOUSE' | 'LEVER'
+export type Ats = 'GREENHOUSE' | 'LEVER' | 'ASHBY'
 export type ManualJob = { title: string; company: string; location: string; url: string; description: string }
 
 export type FormField = {
@@ -230,7 +230,7 @@ export function createApi(cfg: ApiConfig) {
  */
 /** missing = what blocks jobs (matching needs only these); later = asked when an application form needs it. */
 /** Sites whose application forms the agent fills. Everything else: the user applies on the company site. */
-export const AGENT_SOURCES: Job['source'][] = ['greenhouse', 'lever']
+export const AGENT_SOURCES: Job['source'][] = ['greenhouse', 'lever', 'ashby']
 
 /** Can the agent apply to this job? If not, a one-line reason for the user. */
 export function agentSupport(j: Pick<Job, 'source' | 'closedAt'>): { can: boolean; why: string | null } {
@@ -239,10 +239,9 @@ export function agentSupport(j: Pick<Job, 'source' | 'closedAt'>): { can: boolea
   const why: Partial<Record<Job['source'], string>> = {
     workday: 'Workday needs your own account on the company\'s site, so apply there.',
     smartrecruiters: 'The agent can\'t fill SmartRecruiters forms yet. Apply on the company site.',
-    ashby: 'The agent can\'t fill Ashby forms yet. Apply on the company site.',
     adzuna: 'Found on a job board: it links to the company\'s own application.',
   }
-  return { can: false, why: why[j.source] ?? 'The agent fills Greenhouse and Lever forms. Apply on the company site.' }
+  return { can: false, why: why[j.source] ?? 'The agent fills Greenhouse, Lever and Ashby forms. Apply on the company site.' }
 }
 
 export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[]; later: string[]; percent: number } {

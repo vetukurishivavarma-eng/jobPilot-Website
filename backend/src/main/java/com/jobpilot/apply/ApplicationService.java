@@ -74,8 +74,9 @@ public class ApplicationService {
         List<FormField> form;
         if (board.length == 2 && job.source().equals("greenhouse")) form = FormReader.greenhouse(board[1], job.externalId());
         else if (board.length == 2 && job.source().equals("lever")) form = FormReader.lever(board[1], job.externalId());
+        else if (board.length == 2 && job.source().equals("ashby")) form = FormReader.ashby(board[1], job.externalId());
         else throw new ApiException(HttpStatus.UNPROCESSABLE_CONTENT, "UNSUPPORTED_SITE",
-                    "The agent can apply on Greenhouse and Lever forms for now. Open the original posting to apply yourself.");
+                    "The agent can apply on Greenhouse, Lever and Ashby forms for now. Open the original posting to apply yourself.");
 
         Answerer.Candidate c = candidate(userId);
         if (c.resumeId() == null)
@@ -142,6 +143,7 @@ public class ApplicationService {
     }
 
     private static final java.util.regex.Pattern LEVER_PAGE = java.util.regex.Pattern.compile("^https://jobs\\.(?:eu\\.)?lever\\.co/[^/]+/([0-9a-f-]{36})");
+    private static final java.util.regex.Pattern ASHBY_PAGE = java.util.regex.Pattern.compile("^https://jobs\\.ashbyhq\\.com/[^/]+/([0-9a-f-]{36})");
     private static final java.util.regex.Pattern GH_PAGE = java.util.regex.Pattern.compile("^https://(?:job-boards|boards)(?:\\.eu)?\\.greenhouse\\.io/[^/?]+/jobs/(\\d+)");
     private static final java.util.regex.Pattern GH_PARAM = java.util.regex.Pattern.compile("[?&](?:gh_jid|token)=(\\d+)");
 
@@ -151,6 +153,7 @@ public class ApplicationService {
         java.util.regex.Matcher m;
         if ((m = LEVER_PAGE.matcher(url)).find()) return new String[]{"lever", m.group(1)};
         if ((m = GH_PAGE.matcher(url)).find()) return new String[]{"greenhouse", m.group(1)};
+        if ((m = ASHBY_PAGE.matcher(url)).find()) return new String[]{"ashby", m.group(1)};
         if (url.contains("greenhouse.io/") && (m = GH_PARAM.matcher(url)).find()) return new String[]{"greenhouse", m.group(1)};
         return null;
     }
@@ -306,8 +309,9 @@ public class ApplicationService {
     }
 
     static String applyUrl(String source, String board, String externalId, String url) {
-        if (!source.equals("lever") && !source.equals("greenhouse")) return url; // Workday etc.: the posting itself
+        if (!source.equals("lever") && !source.equals("greenhouse") && !source.equals("ashby")) return url; // Workday etc.: the posting itself
         String token = board.split(":", 2)[1];
+        if (source.equals("ashby")) return "https://jobs.ashbyhq.com/" + token + "/" + externalId + "/application";
         if (source.equals("lever")) return "https://jobs.lever.co/" + token + "/" + externalId + "/apply";
         // the embed form: a board page can redirect to the company's own careers form (Okta does), the embed never does
         String host = url != null && url.matches("https://([a-z0-9-]+\\.)*eu\\.greenhouse\\.io/.*") ? "job-boards.eu.greenhouse.io" : "job-boards.greenhouse.io";
