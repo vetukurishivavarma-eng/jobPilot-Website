@@ -14,7 +14,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.stream.Stream;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -80,16 +83,31 @@ public class JobController {
         size = Math.clamp(size, 1, 100);
         String like = "%" + q.strip().toLowerCase(Locale.ROOT) + "%";
         MatchScorer.Candidate c = matcher.candidate(userId);
-        // only jobs in the user's preferred locations, role and skills (profile); filtered in memory, so paging happens here
-        // ponytail: scores every job in the list in memory; store scores if a user's list grows past a few thousand
-        Stream<JobDto> jobs = links.search(userId, st, includeClosed, like, Pageable.unpaged()).getContent().stream()
-                .filter(uj -> uj.origin == UserJob.Origin.IMPORT || matcher.relevant(c, uj.job)) // jobs the user added always show
-                .map(uj -> JobDto.of(uj, false, matcher.score(c, uj.job)));
+        // only jobs in the user's preferred locations, role and skills (profile); filtered in memory, so paging happens here.
+        // Light rows (no description) for the whole list, full rows only for the page: loading every description ran
+        // the 512 MB instance out of memory once the catalog grew.
+        // ponytail: scores every job in the list in memory; store scores if a user's list grows past tens of thousands
+        List<UserJobRepository.Light> rows = links.searchLight(userId, st, includeClosed, like);
+        Map<UUID, List<String>> skills = new HashMap<>();
+        List<UUID> ids = rows.stream().map(UserJobRepository.Light::jobId).toList();
+        for (int i = 0; i < ids.size(); i += 1000)
+            for (Object[] r : links.skillsOf(ids.subList(i, Math.min(ids.size(), i + 1000))))
+                skills.computeIfAbsent((UUID) r[0], k -> new ArrayList<>()).add((String) r[1]);
+        record Scored(UserJobRepository.Light row, MatchScorer.Match match) {}
+        Stream<Scored> scored = rows.stream()
+                .filter(l -> l.origin() == UserJob.Origin.IMPORT // jobs the user added always show
+                        || matcher.relevant(c, l, skills.getOrDefault(l.jobId(), List.of())))
+                .map(l -> new Scored(l, matcher.score(c, l, skills.getOrDefault(l.jobId(), List.of()))));
         if (sort.equalsIgnoreCase("match"))
-            jobs = jobs.sorted(Comparator.comparing((JobDto d) -> d.match().score(), Comparator.nullsLast(Comparator.reverseOrder())));
-        List<JobDto> all = jobs.toList();
+            scored = scored.sorted(Comparator.comparing((Scored x) -> x.match().score(), Comparator.nullsLast(Comparator.reverseOrder())));
+        List<Scored> all = scored.toList();
         int from = Math.min(all.size(), page * size);
-        return new PageDto(all.subList(from, Math.min(all.size(), from + size)), all.size(), page, size);
+        List<Scored> pageRows = all.subList(from, Math.min(all.size(), from + size));
+        Map<UUID, UserJob> full = new HashMap<>();
+        if (!pageRows.isEmpty()) for (UserJob uj : links.withJobs(pageRows.stream().map(x -> x.row().linkId()).toList())) full.put(uj.id, uj);
+        List<JobDto> items = pageRows.stream().filter(x -> full.containsKey(x.row().linkId()))
+                .map(x -> JobDto.of(full.get(x.row().linkId()), false, x.match())).toList();
+        return new PageDto(items, all.size(), page, size);
     }
 
     @GetMapping("/jobs/{id}")

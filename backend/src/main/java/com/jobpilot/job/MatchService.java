@@ -82,6 +82,16 @@ public class MatchService {
         return MatchScorer.inDesiredLocation(c, j.location, j.workplace) && MatchScorer.fitsResume(c, j.title, j.skills, j.minYears, j.seniority);
     }
 
+    /** Same as {@link #relevant(MatchScorer.Candidate, Job)} for a list row (no description loaded). */
+    boolean relevant(MatchScorer.Candidate c, UserJobRepository.Light j, List<String> skills) {
+        return MatchScorer.inDesiredLocation(c, j.location(), j.workplace()) && MatchScorer.fitsResume(c, j.title(), skills, j.minYears(), j.seniority());
+    }
+
+    MatchScorer.Match score(MatchScorer.Candidate c, UserJobRepository.Light j, List<String> skills) {
+        return MatchScorer.score(c, new MatchScorer.JobFacts(j.title(), skills, j.minYears(), j.seniority(), j.location(), j.workplace(),
+                j.salaryMax(), j.salaryCurrency()));
+    }
+
     public record NewMatch(UUID jobId, String title, String company, String location, Integer score, String url) {}
 
     /** Relevant jobs found for the user after `since`, best match first (the email digest). */

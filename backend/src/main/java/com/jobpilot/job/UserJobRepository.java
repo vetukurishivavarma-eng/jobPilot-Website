@@ -18,6 +18,20 @@ public interface UserJobRepository extends JpaRepository<UserJob, UUID> {
             countQuery = "select count(uj) from UserJob uj join uj.job j" + FILTER)
     Page<UserJob> search(UUID u, Collection<UserJob.Status> st, boolean closed, String q, Pageable page);
 
+    /** What the job list needs to filter, score and sort a job: no description (the big column). */
+    record Light(UUID linkId, UUID jobId, String title, String location, String workplace, Integer minYears, String seniority,
+                 Long salaryMax, String salaryCurrency, UserJob.Origin origin) {}
+
+    @Query("select new com.jobpilot.job.UserJobRepository$Light(uj.id, j.id, j.title, j.location, j.workplace, j.minYears, j.seniority,"
+            + " j.salaryMax, j.salaryCurrency, uj.origin) from UserJob uj join uj.job j" + FILTER + " order by coalesce(j.postedAt, uj.discoveredAt) desc, j.id")
+    java.util.List<Light> searchLight(UUID u, Collection<UserJob.Status> st, boolean closed, String q);
+
+    @Query("select j.id, s from Job j join j.skills s where j.id in :ids")
+    java.util.List<Object[]> skillsOf(Collection<UUID> ids);
+
+    @Query("select uj from UserJob uj join fetch uj.job where uj.id in :ids")
+    java.util.List<UserJob> withJobs(Collection<UUID> ids);
+
     /** Still-new, still-open jobs linked to the user after `since` (the email digest). */
     @Query("select uj.job from UserJob uj join uj.job j where uj.userId = :u and uj.discoveredAt > :since and uj.status = :st and j.closedAt is null")
     java.util.List<Job> newSince(UUID u, java.time.Instant since, UserJob.Status st);
