@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, ApiError, bestBets, type BestBet, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult, type DiscoveryProgress } from '../api'
+import { agentSupport, api, ApiError, bestBets, type BestBet, type Job, type JobPage, type JobStatus, type ManualJob, type SourceResult, type DiscoveryProgress } from '../api'
 
 const TABS = [['ACTIVE', 'Inbox'], ['SAVED', 'Saved'], ['DISMISSED', 'Dismissed'], ['ALL', 'All']] as const
 const SOURCE: Record<Job['source'], string> = { greenhouse: 'Greenhouse', lever: 'Lever', workday: 'Workday', smartrecruiters: 'SmartRecruiters', ashby: 'Ashby', adzuna: 'Adzuna', web: 'Web', manual: 'Added by you' }
@@ -169,7 +169,9 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
   const [err, setErr] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
   const nav = useNavigate()
-  const agentCan = (j.source === 'greenhouse' || j.source === 'lever') && !j.closedAt
+  const agent = agentSupport(j)
+  const agentCan = agent.can
+  const siteUrl = j.applyUrl ?? j.url
 
   async function applyWithAgent() {
     setPreparing(true)
@@ -214,6 +216,9 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
               {preparing ? 'Reading form…' : 'Apply with agent'}
             </button>
           )}
+          {!agentCan && !j.closedAt && siteUrl && j.status !== 'DISMISSED' && (
+            <a className="btn px-3 py-1.5" href={siteUrl} target="_blank" rel="noreferrer" title={agent.why ?? undefined}>Apply on company site ↗</a>
+          )}
           {j.status === 'SAVED'
             ? <button className="btn-ghost border-signal text-signal" onClick={() => onStatus('NEW')}>Saved ✓</button>
             : j.status !== 'DISMISSED' && <button className="btn-ghost" onClick={() => onStatus('SAVED')}>Save</button>}
@@ -223,6 +228,7 @@ function JobCard({ job: j, onStatus }: { job: Job; onStatus: (s: JobStatus) => v
         </div>
       </div>
 
+      {!agentCan && !j.closedAt && agent.why && j.status !== 'DISMISSED' && <p className="mt-2 text-xs text-muted">{agent.why}</p>}
       {err && !open && <p className="mt-2 text-sm text-danger">{err}</p>}
       {(reqs.length > 0 || j.skills.length > 0) && (
         <div className="mt-3 flex flex-wrap gap-1.5">

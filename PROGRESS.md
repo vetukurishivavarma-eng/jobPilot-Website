@@ -1,5 +1,10 @@
 # JobPilot AI — Progress
 
+## 2026-11-13 late: location rules (user-specified, deployed)
+- Job list = fits resume AND (preferred city OR remote open to India OR score >= 75 (`MatchScorer.STRONG_MATCH`) anywhere in India). "Willing to relocate" no longer widens the list (Hyderabad-only user saw Bengaluru). Auto mode + digest = preferred locations only.
+- Remote scope from the description at save time (`MatchScorer.scopedLocation`, stored as job.location): US/UK/Canada/EU-only -> "Remote - <country>" (hidden); "Remote - US" + hires from anywhere/India -> "(open to India)" (shown). Existing jobs fixed on the next discovery run.
+- After applying in a new India city: `ApplicationDto.suggestLocation`; app 1.4.2 dialog (offerLocation in src/dialog.tsx) after "I've applied"/auto-submit; website = Add card on the applied application. Shared `api.addPreferredLocation`.
+
 ## RESUME HERE (2026-11-13 night, 83 backend tests pass, ALL PUSHED; APK 1.4.1 being built/released)
 - **Form rules** (`apply/Answerer.rule`, runs before profile facts): 18+ from profiles.date_of_birth (IST today), authorized to work = profiles.authorized_to_work (default true; DTO is Boolean so old apps that omit it don't flip it), sponsorship = the opposite, how did you hear = careers-page option / "Company careers page", single-option SELECT/MULTISELECT = that option (after the bank), currently employed, worked FOR us/<company> before (never "worked with X before"), highest degree (LEVELS map), graduation year, EEO = decline option (was: left blank). V12 migration. Resume import reads "Date of Birth/DOB" day-first.
 - **Expected salary** fix: any salary/CTC/compensation/package wording except current/last; LPA/lakh -> /1e5, month -> /12, dropdown = range containing it (`Answerer.salary`). Profile stores yearly rupees (a value <1000 is taken as LPA).
