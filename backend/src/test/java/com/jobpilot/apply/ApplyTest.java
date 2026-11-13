@@ -106,6 +106,33 @@ class ApplyTest {
     }
 
     @Test
+    void answersASmartRecruitersPageAsRead() {
+        // exactly what fill.js's scanPage() read off Swiggy's live form (2026-11-13)
+        List<FormField> page = List.of(
+                new FormField("id:first-name-input", "First name", "TEXT", true, List.of(), null, null),
+                new FormField("id:last-name-input", "Last name", "TEXT", true, List.of(), null, null),
+                new FormField("id:email-input", "Email", "TEXT", true, List.of(), null, null),
+                new FormField("id:confirm-email-input", "Confirm your email", "TEXT", true, List.of(), null, null),
+                new FormField("label:city", "City", "TEXT", true, List.of(), null, null),
+                new FormField("label:phone number", "Phone number", "TEXT", false, List.of(), null, null),
+                new FormField("id:linkedin-input", "LinkedIn", "TEXT", false, List.of(), null, null),
+                new FormField("id:hiring-manager-message-input", "Let the company know about your interest working there", "TEXTAREA", false, List.of(), null, null),
+                new FormField("file:resume", "Resume", "FILE", true, List.of(), null, null));
+        List<FormField> out = Answerer.answer(page, ASHA, new Answerer.JobInfo("SDE", "Swiggy", ""), Map.of(), null);
+        assertEquals("Asha", field(out, "First name").value());
+        assertEquals("Rao Kumar", field(out, "Last name").value());
+        assertEquals("asha@example.com", field(out, "Confirm your email").value());
+        assertEquals("Bengaluru", field(out, "City").value());
+        assertEquals("+91 98765 43210", field(out, "Phone number").value());
+        assertEquals("https://linkedin.com/in/asha", field(out, "LinkedIn").value());
+        assertEquals("Asha CV", field(out, "Resume").value());
+        assertTrue(out.stream().noneMatch(FormField::missing));
+        assertEquals("https://jobs.smartrecruiters.com/oneclick-ui/company/SWIGGY/publication/c6cc2c5e-5144-413f-be85-3cc406655370?dcr_ci=SWIGGY",
+                com.jobpilot.job.JobSources.smartRecruitersForm("https://jobs.smartrecruiters.com/SWIGGY/6000000001576673-social-media-intern", "c6cc2c5e-5144-413f-be85-3cc406655370"),
+                "the address the posting's apply link redirects to");
+    }
+
+    @Test
     void screeningRulesAndSalary() {
         List<String> yn = List.of("Yes", "No");
         List<FormField> f = List.of(

@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface JobRepository extends JpaRepository<Job, UUID> {
     Optional<Job> findBySourceAndExternalId(String source, String externalId);
     List<Job> findByBoardAndClosedAtIsNull(String board);
+    Optional<Job> findFirstBySourceAndApplyUrlContaining(String source, String part);
 }

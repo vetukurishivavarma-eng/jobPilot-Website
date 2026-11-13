@@ -247,6 +247,18 @@ public final class JobSources {
         return eachJob(ids, id -> parseSmartRecruitersJob(SafeHttp.get(api + "/" + id), company, name));
     }
 
+    private static final java.util.regex.Pattern SR_POSTING = java.util.regex.Pattern.compile("^https://jobs\\.smartrecruiters\\.com/([A-Za-z0-9_-]+)/");
+
+    /**
+     * The "Easy apply" form the posting's apply link redirects to (seen live, 2026-11-13):
+     * jobs.smartrecruiters.com/oneclick-ui/company/{COMPANY}/publication/{uuid}?dcr_ci={COMPANY}, COMPANY as in the posting URL.
+     */
+    public static String smartRecruitersForm(String postingUrl, String uuid) {
+        if (postingUrl == null || uuid == null || !uuid.matches("[0-9a-f-]{36}")) return null;
+        java.util.regex.Matcher m = SR_POSTING.matcher(postingUrl);
+        return m.find() ? "https://jobs.smartrecruiters.com/oneclick-ui/company/" + m.group(1) + "/publication/" + uuid + "?dcr_ci=" + m.group(1) : null;
+    }
+
     static JobDraft parseSmartRecruitersJob(String json, String company, String name) {
         JsonNode j = JSON.readTree(json), loc = j.path("location");
         String location = str(loc.path("fullLocation"));
@@ -260,7 +272,7 @@ public final class JobSources {
             d.append(text).append("\n\n");
         }
         return new JobDraft("smartrecruiters", str(j.path("id")), "smartrecruiters:" + company, str(j.path("postingUrl")),
-                firstNonNull(str(j.path("applyUrl")), str(j.path("postingUrl"))), str(j.path("name")),
+                firstNonNull(smartRecruitersForm(str(j.path("postingUrl")), str(j.path("uuid"))), str(j.path("applyUrl")), str(j.path("postingUrl"))), str(j.path("name")),
                 firstNonNull(name, str(j.path("company").path("name")), company), location,
                 loc.path("remote").asBoolean(false) ? "REMOTE" : loc.path("hybrid").asBoolean(false) ? "HYBRID" : workplaceFrom(location, null),
                 str(j.path("typeOfEmployment").path("label")), null, null, null, blankToNull(d.toString().strip()), instant(str(j.path("releasedDate"))));

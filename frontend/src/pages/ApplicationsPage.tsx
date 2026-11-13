@@ -247,6 +247,7 @@ export function ApplicationPage() {
             <li>Press the site's <b>Submit</b> button. This page updates by itself when the site confirms.</li>
           </ol>
           {a.error && <p className="mt-3 rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-900">{a.error}</p>}
+          {a.fields.length === 0 && <p className="mt-3 text-sm text-muted">This site's questions are read when the form opens: open it (the extension fills it) and anything JobPilot can't answer shows up here.</p>}
         </section>
       )}
       {a.status === 'SUBMITTED' && a.suggestLocation && <AddCity city={a.suggestLocation} onAdded={() => setA({ ...a, suggestLocation: null })} />}

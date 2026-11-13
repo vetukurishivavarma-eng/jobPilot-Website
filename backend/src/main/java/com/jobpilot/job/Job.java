@@ -90,6 +90,7 @@ public class Job {
     public String url() { return url; }
     public String title() { return title; }
     public String company() { return company; }
+    public String applyUrl() { return applyUrl; }
     public String location() { return location; }
     public String workplace() { return workplace; }
     public String description() { return description; }

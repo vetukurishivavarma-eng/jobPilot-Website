@@ -1,5 +1,11 @@
 # JobPilot AI — Progress
 
+## 2026-11-13 ~23:30: 1.4.3 RELEASED (github v1.4.3, link in WA self)
+- Update download = themed progress bar (`ProgressHost`/`progress()` in src/dialog.tsx, createDownloadResumable); shows from the NEXT update on.
+- `shared agentSupport()` / `AGENT_SOURCES` decide "Apply with agent" vs "Apply on company site" + reason (web JobsPage + app job screen).
+- **Ashby agent apply**: `FormReader.ashby` = POST jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobPosting (what Ashby's own job page loads); input name/id = field path, so fill.js works unchanged; extension manifest 0.3.0 adds jobs.ashbyhq.com (user must reload the extension). Test fixture = real SpotDraft form. Location box is an autocomplete (may need a tap). Not live end-to-end tested.
+- **SmartRecruiters NOT done**: oneclick-ui form loads behind DataDome; needs in-page DOM reading in fill.js (fields -> server Answerer -> fill). Asked user before building.
+
 ## 2026-11-13 late: location rules (user-specified, deployed)
 - Job list = fits resume AND (preferred city OR remote open to India OR score >= 75 (`MatchScorer.STRONG_MATCH`) anywhere in India). "Willing to relocate" no longer widens the list (Hyderabad-only user saw Bengaluru). Auto mode + digest = preferred locations only.
 - Remote scope from the description at save time (`MatchScorer.scopedLocation`, stored as job.location): US/UK/Canada/EU-only -> "Remote - <country>" (hidden); "Remote - US" + hires from anywhere/India -> "(open to India)" (shown). Existing jobs fixed on the next discovery run.

@@ -3,6 +3,8 @@
 // auto-mode queue opened (background.js) with "Submit for me" on, it also presses Submit; a CAPTCHA challenge or
 // anything it couldn't fill goes to the user. On the site's thank-you page the application is marked as applied.
 // Same field logic as the server's BrowserFiller, ported to the page.
+// SmartRecruiters can't be read in advance: here the questions are read off the page (inside its web components'
+// shadow DOM), the server answers them (POST page-form), then they're filled; its "Next" pages are walked in auto mode.
 (() => {
   if (window.__jobpilot) return;
   window.__jobpilot = true;
@@ -42,8 +44,64 @@
     panelEl.appendChild(d);
   }
 
+  // ---------- shadow DOM ----------
+  const SR = location.host === 'jobs.smartrecruiters.com' && location.pathname.includes('/oneclick-ui/');
+  function deepAll() {
+    const out = [];
+    const walk = (r) => { for (const el of r.querySelectorAll('*')) { out.push(el); if (el.shadowRoot) walk(el.shadowRoot) } };
+    walk(document);
+    return out;
+  }
+  const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 };
+  const unstar = (t) => (t || '').replace(/\s+/g, ' ').trim();
+  function labelOf(el) {
+    const l = el.labels?.[0]?.innerText || el.getAttribute('aria-label') || el.getAttribute('splarialabel') || el.closest?.('label')?.innerText || '';
+    return unstar(l);
+  }
+  // a component's id (first-name-input) is stable; generated ones (spl-form-element_7) aren't, so those go by label
+  function keyOf(host, label) {
+    return host.id && !/^spl-form-element_|^spl-dropzone/.test(host.id) ? 'id:' + host.id : 'label:' + label.replace(/\*$/, '').trim().toLowerCase();
+  }
+
+  /** The questions on the current SmartRecruiters page, as the server's FormField shape. */
+  function scanPage() {
+    const fields = [], seen = new Set();
+    const add = (f) => { if (f.label && !seen.has(f.key)) { seen.add(f.key); fields.push(f) } };
+    const els = deepAll();
+    for (const el of els) {
+      if (!visible(el)) continue;
+      const host = el.getRootNode().host || el;
+      if ((el.tagName === 'INPUT' && /^(text|email|tel|url|number|)$/.test(el.type)) || el.tagName === 'TEXTAREA') {
+        if (/search/i.test(el.getAttribute('aria-label') || '')) continue; // dropdown search boxes
+        const label = labelOf(el);
+        add({ key: keyOf(host, label), label: label.replace(/\*$/, '').trim(), type: el.tagName === 'TEXTAREA' ? 'TEXTAREA' : 'TEXT', required: /\*$/.test(label) || el.required, options: [] });
+      } else if (el.tagName === 'SPL-SELECT' && !/phone-field/.test(el.className)) {
+        const label = labelOf(el) || unstar(el.closest('spl-form-field')?.innerText || '');
+        const options = [...el.querySelectorAll('spl-select-option')].map((o) => unstar(o.innerText)).filter(Boolean);
+        add({ key: keyOf(el, label), label: label.replace(/\*$/, '').trim(), type: 'SELECT', required: /\*$/.test(label), options });
+      } else if (el.tagName === 'INPUT' && (el.type === 'radio' || el.type === 'checkbox') && el.name) {
+        const group = els.filter((x) => x.tagName === 'INPUT' && x.name === el.name);
+        const legend = el.closest('fieldset')?.querySelector('legend')?.innerText || el.closest('[role=radiogroup],[role=group]')?.getAttribute('aria-label') || labelOf(el);
+        add({ key: 'name:' + el.name, label: unstar(legend).replace(/\*$/, '').trim(), type: el.type === 'radio' ? 'SELECT' : 'MULTISELECT',
+          required: /\*$/.test(unstar(legend)) || el.required, options: group.map((x) => unstar((x.closest('label') || x.parentElement)?.innerText || x.value)) });
+      }
+    }
+    if (els.some((e) => e.tagName === 'INPUT' && e.type === 'file')) add({ key: 'file:resume', label: 'Resume', type: 'FILE', required: true, options: [] });
+    return fields;
+  }
+
   // ---------- finding fields ----------
   function find(f) {
+    if (f.key.startsWith('id:')) {
+      const host = deepAll().find((e) => e.id === f.key.slice(3));
+      return host?.shadowRoot?.querySelector('input,textarea') || host || null;
+    }
+    if (f.key.startsWith('label:')) {
+      const want = f.key.slice(6);
+      return deepAll().find((e) => (e.tagName === 'INPUT' || e.tagName === 'TEXTAREA' || e.tagName === 'SPL-SELECT') && visible(e)
+        && labelOf(e).replace(/\*$/, '').trim().toLowerCase() === want) || null;
+    }
+    if (f.key.startsWith('name:')) return deepAll().find((e) => e.tagName === 'INPUT' && e.name === f.key.slice(5)) || null;
     if (f.key.startsWith('css:')) return document.querySelector(f.key.slice(4));
     const k = q(f.key);
     const el = document.querySelector(`[name="${k}"]:not([type=hidden]), [id="${k}"]:not([type=hidden])`);
@@ -60,11 +118,11 @@
 
   // React-controlled inputs ignore a plain .value assignment: use the native setter, then fire the events.
   function setText(el, v, blur = true) {
-    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const proto = Object.getPrototypeOf(el); // the element's own (works inside shadow roots)
     Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    if (blur) el.dispatchEvent(new Event('blur', { bubbles: true }));
+    el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    if (blur) el.dispatchEvent(new Event('blur', { bubbles: true, composed: true }));
     return el.value === v;
   }
 
@@ -107,7 +165,28 @@
     return true;
   }
 
+  // SmartRecruiters' <spl-select>: open it, click the option with the wanted text
+  async function splSelect(el, v) {
+    el.click();
+    await sleep(400);
+    const o = [...el.querySelectorAll('spl-select-option')].find((x) => eq(unstar(x.innerText), v));
+    if (!o) { el.click(); return false }
+    o.click();
+    await sleep(300);
+    return true;
+  }
+
   async function choose(f, values) {
+    if (f.key.startsWith('name:')) {
+      let done = 0;
+      for (const b of deepAll().filter((e) => e.tagName === 'INPUT' && e.name === f.key.slice(5))) {
+        const text = unstar((b.closest('label') || b.parentElement)?.innerText || b.value);
+        if (values.some((x) => eq(x, text) || eq(x, b.value))) { if (!b.checked) b.click(); done++ }
+      }
+      return done === values.length;
+    }
+    const sel = find(f);
+    if (sel?.tagName === 'SPL-SELECT') return splSelect(sel, values[0]);
     const k = q(f.key);
     const boxes = [...document.querySelectorAll(`input[type=radio][name="${k}"], input[type=checkbox][name="${k}"], input[type=checkbox][name="${k}[]"]`)];
     if (boxes.length) {
@@ -134,16 +213,21 @@
 
   async function attach(f, appId) {
     const k = q(f.key);
-    const input = document.querySelector(`input[type=file][name="${k}"], input[type=file][id="${k}"]`) || document.querySelector('input[type=file]');
-    if (!input) return false;
+    // SmartRecruiters: every dropzone (the first, "Easy Apply", also reads the resume into Experience/Education)
+    const inputs = SR ? deepAll().filter((e) => e.tagName === 'INPUT' && e.type === 'file')
+      : [document.querySelector(`input[type=file][name="${k}"], input[type=file][id="${k}"]`) || document.querySelector('input[type=file]')].filter(Boolean);
+    if (!inputs.length) return false;
     const r = await ask({ type: 'resume', id: appId });
     if (r.error) throw new Error(r.error);
     const bytes = Uint8Array.from(atob(r.b64), (c) => c.charCodeAt(0));
-    const dt = new DataTransfer();
-    dt.items.add(new File([bytes], r.name, { type: r.type }));
-    input.files = dt.files;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
+    for (const input of inputs) {
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], r.name, { type: r.type }));
+      input.files = dt.files;
+      input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      if (SR) await sleep(6000); // let it read the resume before the next step
+    }
     return true;
   }
 
@@ -155,6 +239,7 @@
     if (!el) return false;
     if (el.getAttribute('role') === 'combobox') return combo(el, f.value);
     if ((el.className || '').toString().includes('location-input')) return leverLocation(el, f.value);
+    if (SR && el.type === 'tel') return setText(el, f.value.replace(/^\+?91[\s-]*/, '').replace(/[^0-9]/g, ''));
     return setText(el, f.value);
   }
 
@@ -166,8 +251,19 @@
     try {
       const r = await ask({ type: 'forPage', url: location.href });
       if (r.error) return quiet ? r.error : panel(r.error) || r.error;
-      const app = r.data;
+      let app = r.data;
       if (app.status === 'SUBMITTED') return panel('You already applied to this job (JobPilot shows it as applied).') || 'already applied';
+      if (SR) {
+        btn.textContent = 'Reading the form…';
+        const page = scanPage();
+        const rr = await ask({ type: 'pageForm', id: app.id, fields: page });
+        if (rr.error) return quiet ? rr.error : panel(rr.error) || rr.error;
+        const keys = new Set(page.map((f) => f.key));
+        app = { ...rr.data, fields: rr.data.fields.filter((f) => keys.has(f.key)) };
+        app.fields.sort((a, b) => (a.type === 'FILE' ? -1 : b.type === 'FILE' ? 1 : 0));
+        app.missing = app.fields.filter((f) => f.required && !f.value && f.type !== 'FILE').length;
+        btn.textContent = 'Filling…';
+      }
       if (app.missing > 0) return panel(`JobPilot needs ${app.missing} answer(s) from you first. Open the application in JobPilot, answer them, then press Fill again.`) || 'missing answers';
       const problems = [];
       const texts = [];
@@ -211,14 +307,25 @@
   }
 
   // ---------- auto mode: submit ----------
-  function submitButton() {
-    const vis = (b) => b.offsetParent && !b.disabled;
-    const all = [...document.querySelectorAll('#btn-submit, button[type=submit], input[type=submit], button')].filter(vis);
-    return all.find((b) => /submit|send application/i.test(b.innerText || b.value || ''));
+  function submitButton(re = /submit|send application/i) {
+    const vis = (b) => (b.offsetParent || visible(b)) && !b.disabled;
+    const all = SR ? deepAll().filter((e) => e.tagName === 'BUTTON' || e.tagName === 'SPL-BUTTON').filter(vis)
+      : [...document.querySelectorAll('#btn-submit, button[type=submit], input[type=submit], button')].filter(vis);
+    return all.find((b) => re.test((b.innerText || b.value || b.getRootNode().host?.innerText || '').trim()));
   }
 
   async function auto(role) {
-    const res = await fill(true);
+    let res = await fill(true);
+    for (let pageNo = 0; SR && Array.isArray(res) && !res.length && pageNo < 5; pageNo++) {
+      const next = !submitButton() && submitButton(/^next$/i);
+      if (!next) break;
+      const before = JSON.stringify(scanPage().map((f) => f.key));
+      next.click();
+      await sleep(4000);
+      if (JSON.stringify(scanPage().map((f) => f.key)) === before)
+        return ask({ type: 'needsYou', reason: 'SmartRecruiters wants something on this page (often Experience or Education: press Add). Then press Next.' });
+      res = await fill(true);
+    }
     if (!Array.isArray(res)) return ask({ type: 'needsYou', reason: "Couldn't fill this form: " + res });
     if (res.length) return ask({ type: 'needsYou', reason: 'Fill these yourself, then submit: ' + res.join(', ') });
     if (!role.autoSubmit) return ask({ type: 'needsYou', reason: 'Filled. Check it and press Submit (or close the tab to skip).' });
@@ -237,7 +344,7 @@
     if (await markIfThanks()) return;
     // the form can render late (Greenhouse is a React app): wait for the resume upload field
     for (let i = 0; i < 40; i++) {
-      if (document.querySelector('input[type=file]')) {
+      if (document.querySelector('input[type=file]') || (SR && deepAll().some((e) => e.tagName === 'INPUT' && e.type === 'file'))) {
         btn.onclick = () => fill();
         document.documentElement.appendChild(host);
         // Greenhouse's new boards re-render the whole document after loading, which removes our button: put it back

@@ -7,7 +7,7 @@ async function call(path, opts = {}) {
   if (!token) throw new Error('Open JobPilot (http://localhost:5173) and sign in once, so the extension can use your account.');
   let res;
   try {
-    res = await fetch(API + path, { ...opts, headers: { Authorization: 'Bearer ' + token } });
+    res = await fetch(API + path, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.json ? { 'Content-Type': 'application/json' } : {}) } });
   } catch {
     throw new Error("Can't reach JobPilot on this PC. Is it running? (start.ps1)");
   }
@@ -83,6 +83,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     try {
       if (msg.type === 'forPage') reply({ data: await (await call('/applications/for-page?url=' + encodeURIComponent(msg.url))).json() });
       else if (msg.type === 'resume') reply(await resume(msg.id));
+      else if (msg.type === 'pageForm') reply({ data: await (await call(`/applications/${msg.id}/page-form`, {
+        method: 'POST', body: JSON.stringify({ fields: msg.fields }), json: true })).json() });
       else if (msg.type === 'role') { const cur = await get('cur'); reply(cur?.tabId === sender.tab?.id ? { auto: true, autoSubmit: cur.autoSubmit } : { auto: false }) }
       else if (msg.type === 'needsYou') { await needsYou(sender.tab, msg.reason); reply({}) }
       else if (msg.type === 'submitted') {

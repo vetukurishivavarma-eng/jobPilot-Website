@@ -190,6 +190,8 @@ export function createApi(cfg: ApiConfig) {
   saveAnswers: (id: string, answers: Record<string, string>) => request<Application>('PUT', `/applications/${id}/answers`, { answers }),
   deleteApplication: (id: string) => request<void>('DELETE', `/applications/${id}`),
   markApplied: (id: string) => request<Application>('POST', `/applications/${id}/submitted`),
+  /** The filler read these questions on the form page (SmartRecruiters): the server answers them. */
+  pageForm: (id: string, fields: Omit<FormField, 'value' | 'source'>[]) => request<Application>('POST', `/applications/${id}/page-form`, { fields }),
   setApplicationStage: (id: string, stage: Stage, note?: string, followUpInDays?: number | null) =>
     request<Application>('PATCH', `/applications/${id}/stage`, { stage, note, followUpInDays }),
   followUpEmail: (id: string) => request<FollowUpEmail>('POST', `/applications/${id}/follow-up-email`),
@@ -230,7 +232,7 @@ export function createApi(cfg: ApiConfig) {
  */
 /** missing = what blocks jobs (matching needs only these); later = asked when an application form needs it. */
 /** Sites whose application forms the agent fills. Everything else: the user applies on the company site. */
-export const AGENT_SOURCES: Job['source'][] = ['greenhouse', 'lever', 'ashby']
+export const AGENT_SOURCES: Job['source'][] = ['greenhouse', 'lever', 'ashby', 'smartrecruiters']
 
 /** Can the agent apply to this job? If not, a one-line reason for the user. */
 export function agentSupport(j: Pick<Job, 'source' | 'closedAt'>): { can: boolean; why: string | null } {
@@ -238,10 +240,9 @@ export function agentSupport(j: Pick<Job, 'source' | 'closedAt'>): { can: boolea
   if (AGENT_SOURCES.includes(j.source)) return { can: true, why: null }
   const why: Partial<Record<Job['source'], string>> = {
     workday: 'Workday needs your own account on the company\'s site, so apply there.',
-    smartrecruiters: 'The agent can\'t fill SmartRecruiters forms yet. Apply on the company site.',
     adzuna: 'Found on a job board: it links to the company\'s own application.',
   }
-  return { can: false, why: why[j.source] ?? 'The agent fills Greenhouse, Lever and Ashby forms. Apply on the company site.' }
+  return { can: false, why: why[j.source] ?? 'The agent fills Greenhouse, Lever, Ashby and SmartRecruiters forms. Apply on the company site.' }
 }
 
 export function profileGaps(p: Profile, resumes: Resume[]): { missing: string[]; later: string[]; percent: number } {

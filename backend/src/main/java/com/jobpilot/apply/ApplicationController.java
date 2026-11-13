@@ -6,7 +6,10 @@ import com.jobpilot.job.MatchScorer;
 import com.jobpilot.profile.ProfileRepository;
 import com.jobpilot.shared.ApiException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +36,11 @@ public class ApplicationController {
                                  /** applied in a city that isn't a preferred location: offer adding it (null otherwise) */ String suggestLocation) {}
     public record CreateRequest(@NotNull UUID jobId) {}
     public record AnswersRequest(@NotNull Map<String, String> answers) {}
+    /** One question as the filler read it on the page. */
+    public record PageField(@NotBlank @Size(max = 300) String key, @NotNull @Size(max = 1000) String label,
+                            @NotNull @Pattern(regexp = "TEXT|TEXTAREA|FILE|SELECT|MULTISELECT") String type, boolean required,
+                            @Size(max = 400) List<@NotNull @Size(max = 300) String> options) {}
+    public record PageFormRequest(@NotNull @Size(max = 80) List<@Valid @NotNull PageField> fields) {}
     public record StageRequest(@NotNull Application.Stage stage, String note, Integer followUpInDays) {}
 
     private final ApplicationRepository apps;
@@ -88,6 +96,16 @@ public class ApplicationController {
         }
         ApplicationService.set(a, out);
         return dto(a, job);
+    }
+
+    /** The filler read the questions on the form page: answer them (see ApplicationService.pageForm). */
+    @PostMapping("/{id}/page-form")
+    public ApplicationDto pageForm(@AuthenticationPrincipal UUID userId, @PathVariable UUID id, @Valid @RequestBody PageFormRequest req) {
+        Application a = service.own(userId, id);
+        List<FormField> page = req.fields().stream().map(f -> new FormField(f.key(), FormReader.clean(f.label()), f.type(), f.required(),
+                f.options() == null ? List.of() : f.options().stream().map(FormReader::clean).toList(), null, null)).toList();
+        a = service.pageForm(userId, a, page);
+        return dto(a, jobs.findById(a.jobId).orElse(null));
     }
 
     /** For the browser extension: the application for the job page the user has open. */

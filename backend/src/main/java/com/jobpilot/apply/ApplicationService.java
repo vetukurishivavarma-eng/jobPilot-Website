@@ -75,8 +75,9 @@ public class ApplicationService {
         if (board.length == 2 && job.source().equals("greenhouse")) form = FormReader.greenhouse(board[1], job.externalId());
         else if (board.length == 2 && job.source().equals("lever")) form = FormReader.lever(board[1], job.externalId());
         else if (board.length == 2 && job.source().equals("ashby")) form = FormReader.ashby(board[1], job.externalId());
+        else if (job.source().equals("smartrecruiters")) form = List.of(); // read on the page by the filler (pageForm)
         else throw new ApiException(HttpStatus.UNPROCESSABLE_CONTENT, "UNSUPPORTED_SITE",
-                    "The agent can apply on Greenhouse, Lever and Ashby forms for now. Open the original posting to apply yourself.");
+                    "The agent can apply on Greenhouse, Lever, Ashby and SmartRecruiters forms for now. Open the original posting to apply yourself.");
 
         Answerer.Candidate c = candidate(userId);
         if (c.resumeId() == null)
@@ -119,6 +120,32 @@ public class ApplicationService {
         return apps.save(a);
     }
 
+    /**
+     * Questions the filler read on the form page (sites whose questions can't be read in advance, e.g. SmartRecruiters).
+     * Answers already given (by the user or earlier) are kept; new questions are answered like any form (rules,
+     * profile, answer bank, AI for required open text). Questions from other pages of the form are kept too.
+     */
+    public Application pageForm(UUID userId, Application a, List<FormField> page) {
+        if (a.status == Application.Status.SUBMITTED) return a;
+        Job job = jobs.findById(a.jobId).orElseThrow(() -> ApiException.notFound("Job"));
+        Map<String, FormField> had = new LinkedHashMap<>();
+        for (FormField f : fields(a)) had.put(f.key(), f);
+        List<FormField> fresh = new ArrayList<>();
+        for (FormField f : page) {
+            FormField old = had.get(f.key());
+            if (old != null && old.value() != null && !old.value().isBlank()) had.put(f.key(), f.answered(Answerer.valid(f, old.value()) == null ? null : old.value(), old.source()));
+            else fresh.add(f);
+        }
+        if (!fresh.isEmpty()) {
+            Answerer.Candidate c = candidate(userId);
+            Map<String, String> known = bank.findByUserId(userId).stream().collect(Collectors.toMap(b -> b.questionKey, b -> b.answer, (x, y) -> x));
+            for (FormField f : Answerer.answer(fresh, c, new Answerer.JobInfo(job.title(), job.company(), job.description(),
+                    tailor.coverLetter(userId, job.id()).orElse(null)), known, ollama::generate)) had.put(f.key(), f);
+        }
+        set(a, new ArrayList<>(had.values()));
+        return apps.save(a);
+    }
+
     public record ResumeFile(String name, String contentType, byte[] bytes) {}
 
     /** The file to attach: the job's tailored resume (as PDF) if there is one, otherwise the application's resume. */
@@ -137,12 +164,15 @@ public class ApplicationService {
 
     /** The application for the job whose apply page is at {@code url} (the browser extension asks this). */
     public Optional<Application> forPage(UUID userId, String url) {
+        java.util.regex.Matcher sr = SR_FORM.matcher(url);
+        if (sr.find()) return jobs.findFirstBySourceAndApplyUrlContaining("smartrecruiters", sr.group(1)).flatMap(j -> apps.findByUserIdAndJobId(userId, j.id()));
         String[] job = jobOfPage(url);
         if (job == null) return Optional.empty();
         return jobs.findBySourceAndExternalId(job[0], job[1]).flatMap(j -> apps.findByUserIdAndJobId(userId, j.id()));
     }
 
     private static final java.util.regex.Pattern LEVER_PAGE = java.util.regex.Pattern.compile("^https://jobs\\.(?:eu\\.)?lever\\.co/[^/]+/([0-9a-f-]{36})");
+    private static final java.util.regex.Pattern SR_FORM = java.util.regex.Pattern.compile("^https://jobs\\.smartrecruiters\\.com/oneclick-ui/company/[^/]+/publication/([0-9a-f-]{36})");
     private static final java.util.regex.Pattern ASHBY_PAGE = java.util.regex.Pattern.compile("^https://jobs\\.ashbyhq\\.com/[^/]+/([0-9a-f-]{36})");
     private static final java.util.regex.Pattern GH_PAGE = java.util.regex.Pattern.compile("^https://(?:job-boards|boards)(?:\\.eu)?\\.greenhouse\\.io/[^/?]+/jobs/(\\d+)");
     private static final java.util.regex.Pattern GH_PARAM = java.util.regex.Pattern.compile("[?&](?:gh_jid|token)=(\\d+)");
@@ -305,6 +335,7 @@ public class ApplicationService {
 
     /** The ATS-hosted form, not the company careers page that embeds it. */
     static String applyUrl(Job job) {
+        if (job.source().equals("smartrecruiters") && job.applyUrl() != null) return job.applyUrl();
         return applyUrl(job.source(), job.board(), job.externalId(), job.url());
     }
 
