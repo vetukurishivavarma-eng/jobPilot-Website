@@ -88,7 +88,8 @@ class MatchScorerTest {
         assertTrue(MatchScorer.inDesiredLocation(thane, "Remote", "REMOTE"));
         assertTrue(MatchScorer.inDesiredLocation(thane, "Remote - India", null));
         assertFalse(MatchScorer.inDesiredLocation(thane, "Remote - US", "REMOTE"), "remote abroad");
-        assertTrue(MatchScorer.inDesiredLocation(thane, "Bengaluru, India", "ONSITE"), "open to relocating: any city in India");
+        assertFalse(MatchScorer.inDesiredLocation(thane, "Bengaluru, India", "ONSITE"), "not a preferred city, even if open to relocating");
+        assertTrue(MatchScorer.inDesiredLocation(thane, "Bengaluru; Hyderabad, India", "ONSITE"), "a job offered in a preferred city too");
         assertFalse(MatchScorer.inDesiredLocation(thane, "Mountain View, CA", "ONSITE"), "relocating never means abroad");
         MatchScorer.Candidate stays = new MatchScorer.Candidate(Set.of(), null, List.of(), List.of("Mumbai"), false, null, null);
         assertFalse(MatchScorer.inDesiredLocation(stays, "Bengaluru, India", "ONSITE"), "not relocating: only their cities");

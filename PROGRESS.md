@@ -1,5 +1,14 @@
 # JobPilot AI — Progress
 
+## RESUME HERE (2026-11-13 night, 83 backend tests pass, ALL PUSHED; APK 1.4.1 being built/released)
+- **Form rules** (`apply/Answerer.rule`, runs before profile facts): 18+ from profiles.date_of_birth (IST today), authorized to work = profiles.authorized_to_work (default true; DTO is Boolean so old apps that omit it don't flip it), sponsorship = the opposite, how did you hear = careers-page option / "Company careers page", single-option SELECT/MULTISELECT = that option (after the bank), currently employed, worked FOR us/<company> before (never "worked with X before"), highest degree (LEVELS map), graduation year, EEO = decline option (was: left blank). V12 migration. Resume import reads "Date of Birth/DOB" day-first.
+- **Expected salary** fix: any salary/CTC/compensation/package wording except current/last; LPA/lakh -> /1e5, month -> /12, dropdown = range containing it (`Answerer.salary`). Profile stores yearly rupees (a value <1000 is taken as LPA).
+- Drafts in NEEDS_INPUT are re-answered by the rules (no AI) on GET /applications/{id} and /for-page (`ApplicationService.refreshed`).
+- **Phone auto-fill & submit** (`mobile/app/apply/[id].tsx`): WebView of applyUrl; extension/fill.js (copied to static/fill.js by `npm run build:backend`, fetched at runtime so fixes need no APK) is injected inside `(function(chrome){...})(bridge)`; bridge answers forPage/resume/role/needsYou/submitted from the API. One job at a time, user watching; CAPTCHA = user. NOT device-tested.
+- **1.4.0 RELEASED** (github v1.4.0). **1.4.1** = brand: website palette (ink/paper/forest green #1F6F5C + marigold), new original icon (lowercase j path + marigold waypoint dot; `mobile/assets/make-icon.py` regenerates every launcher size; replaced the Telegram-like paper plane), themed update pop-up (dialog() queues until DialogHost mounts; it used to fall back to Alert.alert during the slow first load). Website favicon = same mark.
+- Deploy hygiene: build snapshot trees with `awk -F'	' '$2!="mobile"'` (NOT grep -P: it fails in this locale and once pushed an EMPTY tree to the website repo, fixed a minute later) and check the diff stat before pushing.
+- OPEN question to user: "authorized to work" is one global answer (fine for India-only); per-country if they ever apply abroad.
+
 ## RESUME HERE (2026-11-13 evening, 81 backend tests pass; website ALL PUSHED + live)
 **2026-11-13 19:40: 1.3.2 / vc11 RELEASED** (github v1.3.2, aapt-verified, Downloads\jobpilot-1.3.2.apk; apk repo main 9bf0ab9 = snapshot built with `git mktree` of README+HEAD:mobile+HEAD:shared, parent apk/main). Step 1 below is DONE.
 **Next steps, in order:**
