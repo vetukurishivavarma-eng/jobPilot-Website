@@ -247,6 +247,18 @@ class InterviewTest {
                 .content("{\"answer\":\"x\"}")).andExpect(status().isConflict());
         mvc().perform(get("/api/interview/sessions").header("Authorization", auth))
                 .andExpect(jsonPath("$[0].mode").value("LIVE")).andExpect(jsonPath("$[0].total").value(8)).andExpect(jsonPath("$[0].answered").value(1));
+        // leaving: a spoken "close it" or the End button stops the interview with no model call
+        String q = Interview.JSON.readTree(mvc().perform(post("/api/interview/sessions").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"Backend Engineer\",\"live\":true}")).andReturn().getResponse().getContentAsString()).get("id").asString();
+        mvc().perform(post("/api/interview/sessions/" + q + "/answers/0").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"answer\":\"I don't want this interview, close it.\"}"))
+                .andExpect(jsonPath("$.ended").value("QUIT")).andExpect(jsonPath("$.report.source").value("QUIT")).andExpect(jsonPath("$.items.length()").value(1));
+        mvc().perform(post("/api/interview/sessions/" + q + "/end").header("Authorization", auth)).andExpect(jsonPath("$.ended").value("QUIT"));
+        assertTrue(Interview.wantsToQuit("Stop the interview please"));
+        assertTrue(Interview.wantsToQuit("close it"));
+        assertTrue(Interview.wantsToQuit("I do not want to continue"));
+        assertFalse(Interview.wantsToQuit("I'd finish it on time and close the ticket."));
+        assertFalse(Interview.wantsToQuit("We had to stop the release because of a bug, then I fixed it."));
         // the phone's eye-contact page loads without a token
         mvc().perform(get("/eye.html")).andExpect(status().isOk());
         // the web app is served from this origin: its pages are public, the API is not

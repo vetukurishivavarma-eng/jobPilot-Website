@@ -135,6 +135,7 @@ public class InterviewController {
         if (c.ended() != null) throw new ApiException(HttpStatus.CONFLICT, "INTERVIEW_ENDED", "This interview has ended.");
         if (index != c.items().size() - 1 || item.answer() != null)
             throw new ApiException(HttpStatus.CONFLICT, "ALREADY_ANSWERED", "In a live interview you answer each question once, in order.");
+        if (Interview.wantsToQuit(answer)) return quit(s, c); // no model call
         Tailor.JobInfo job = job(userId, s);
         Tailor.Facts facts = tailor.facts(userId);
         List<Interview.Item> items = new ArrayList<>(c.items());
@@ -215,6 +216,19 @@ public class InterviewController {
     }
 
     /** A phone seen on camera: the 1st time is a warning, the 2nd ends the interview (JobPilot Policy). Enforced here, not just in the app. */
+    /** The candidate leaves a live interview: ends it with no score and no model calls. Ending twice is fine. */
+    @PostMapping("/{id}/end")
+    public SessionDto end(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
+        InterviewSession s = own(userId, id);
+        Interview.Content c = content(s);
+        if (!c.live() || c.ended() != null || c.report() != null) return dto(s);
+        return quit(s, c);
+    }
+
+    private SessionDto quit(InterviewSession s, Interview.Content c) {
+        return save(s, new Interview.Content(c.source(), c.items(), "LIVE", Interview.quitReport(), c.violationCount(), "QUIT"));
+    }
+
     @PostMapping("/{id}/violations")
     public SessionDto violation(@AuthenticationPrincipal UUID userId, @PathVariable UUID id, @Valid @RequestBody Violation body) {
         InterviewSession s = own(userId, id);

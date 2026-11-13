@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError, type InterviewSession, type Signals } from '../api'
 import { Engine, inApp, speak, stopSpeaking, toApp } from '../live'
+import { confirmDialog } from '../dialog'
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
 const INTERVIEWER = 'Arjun'
@@ -22,6 +23,7 @@ export default function LivePage() {
   const session = useRef<InterviewSession | null>(null)
   const phonePending = useRef(false)
   const misses = useRef(0)
+  const left = useRef(false) // the candidate ended it: drop any reply still in flight
   const [s, setS] = useState<InterviewSession | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -77,7 +79,7 @@ export default function LivePage() {
     const item = x.items[x.items.length - 1]
     setPhase('asking')
     await speak(item.question)
-    if (!engine.current) return
+    if (!engine.current || left.current) return
     if (phonePending.current) return handlePhone()
     listen()
   }
@@ -128,8 +130,10 @@ export default function LivePage() {
   }
 
   function after(x: InterviewSession) {
+    if (left.current) return
     update(x)
     setError(null)
+    if (x.ended === 'QUIT') return quit(x)
     if (x.ended) return policy()
     if (x.done) return finish(x)
     ask(x)
@@ -147,6 +151,22 @@ export default function LivePage() {
       setPhase('warned')
       await speak('I can see a phone on camera. Please put it away. If I see it again, the interview will end.')
     } catch (e) { setError(msg(e)) }
+  }
+
+  async function leave() {
+    if (!await confirmDialog('End this interview?', { message: "You won't get a score for it.", ok: 'End interview', danger: true })) return
+    try { quit(await api.endInterview(session.current!.id)) } catch (e) { setError(msg(e)) }
+  }
+
+  /** Ended by the End button or by saying "stop the interview": no more questions, no recording kept. */
+  async function quit(x: InterviewSession) {
+    left.current = true
+    cancelListen.current()
+    stopSpeaking()
+    await engine.current?.stop()
+    engine.current = null
+    update(x)
+    finished(x)
   }
 
   async function policy() {
@@ -188,6 +208,10 @@ export default function LivePage() {
         <span className="mr-auto truncate">{s?.title}</span>
         {s && phase !== 'ready' && phase !== 'loading' && <span>Question {Math.min(n, TOTAL)} of {TOTAL}</span>}
         <span className="flex items-center gap-1.5"><span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />REC</span>
+        {s && !['loading', 'finishing', 'policy', 'error'].includes(phase) && (
+          <button className="rounded-lg bg-red-500/20 px-3 py-1.5 font-semibold text-red-200 hover:bg-red-500/30" onClick={leave}>End interview
+          </button>
+        )}
       </header>
 
       <main className="relative flex flex-1 flex-col items-center justify-center gap-6 px-4 pb-6">

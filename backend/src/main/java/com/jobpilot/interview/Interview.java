@@ -223,6 +223,20 @@ public final class Interview {
                 """.formatted(level(f), profileText(f), roleLine(job), cut(t.toString(), 9000));
     }
 
+    static final String QUIT = "You ended this interview early, so there is no score. Start a new one when you're ready.";
+    static Report quitReport() { return new Report(null, QUIT, List.of(), List.of(), List.of(), "QUIT"); }
+
+    // ponytail: phrase match on SHORT answers only (a real answer can say "I closed the project"); add an LLM intent check only if users slip past it
+    private static final java.util.regex.Pattern QUIT_WORDS = java.util.regex.Pattern.compile(
+            "(?i)\\b(end|stop|close|quit|cancel|exit|finish|terminate|leave)\\b.{0,25}\\b(interview|session)\\b"
+            + "|\\b(don'?t|do not) want (this|the|to (do|continue|go on))"
+            + "|^\\W*(please |ok |okay )?(close|end|stop|quit|exit|cancel)( it| this| now)?\\b");
+
+    /** The candidate asked to stop ("I don't want this interview, close it"). */
+    static boolean wantsToQuit(String answer) {
+        return answer.split("\\s+").length <= 20 && QUIT_WORDS.matcher(answer).find();
+    }
+
     static Report policyReport() { return new Report(null, POLICY, List.of(), List.of(), List.of(), "POLICY"); }
 
     /** Mean rubric score of the scored answers as 0-100 (1 -> 0, 5 -> 100); null if none were scored. */

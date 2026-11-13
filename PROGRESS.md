@@ -1,5 +1,8 @@
 # JobPilot AI — Progress
 
+
+## 2026-11-13: keep-awake
+- Render free cold start measured 76 s (the "hovering logo" / "server is waking up"). `.github/workflows/keep-awake.yml` (website repo only, GitHub Actions) pings /actuator/health every 10 min. Uses ~720 of the 750 free hrs/month: keep JobPilot the only always-on free service in that Render workspace.
 ## 2026-11-13: 1.3.1 RELEASED (github v1.3.1, vc10)
 - **In-app auto-update** (`mobile/src/update.ts`): on open / back to foreground (max every 6 h) reads https://api.github.com/repos/vetukurishivavarma-eng/jobPilot-apk/releases/latest; tag vX.Y.Z newer than `Constants.expoConfig.version` + an .apk asset -> themed dialog -> expo-file-system/legacy download -> content URI -> expo-intent-launcher VIEW (REQUEST_INSTALL_PACKAGES). Release = GitHub release with tag vX.Y.Z + .apk (can be made from the user's phone). Must be built on THIS PC (same signing key) and version must increase.
 - Tab bar + live-interview view pad by safe-area insets (Android 3-button nav overlapped the tabs).

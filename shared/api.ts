@@ -95,15 +95,15 @@ export type Signals = { seconds?: number; away?: number; eyesOff?: number; tense
 export type InterviewItem = { type: 'BEHAVIOURAL' | 'TECHNICAL' | 'ROLE' | 'INTRO' | 'FOLLOW_UP' | 'PROBE'; question: string; answer: string | null; feedback: InterviewFeedback | null; signals?: Signals | null }
 export type InterviewSession = {
   id: string; jobId: string | null; title: string; source: 'AI' | 'TEMPLATE'; mode: 'SET' | 'LIVE'; items: InterviewItem[]; report: InterviewReport | null;
-  /** phone seen on camera (1 = warned); ended POLICY = stopped; done = all questions answered; recording deleted at recordingExpiresAt */
-  violations: number; ended: 'POLICY' | null; done: boolean; recordingExpiresAt: string | null; createdAt: string; updatedAt: string
+  /** phone seen on camera (1 = warned); ended POLICY = stopped for a phone, QUIT = the candidate ended it; done = all questions answered; recording deleted at recordingExpiresAt */
+  violations: number; ended: 'POLICY' | 'QUIT' | null; done: boolean; recordingExpiresAt: string | null; createdAt: string; updatedAt: string
 }
 export type BillingPlan = { id: 'FIRST' | 'SINGLE' | 'WEEKLY'; label: string; rupees: number; interviews: number; days: number | null }
 /** enabled = payments on; credits = live interviews left. Off: live interviews are free. */
 export type Billing = { enabled: boolean; credits: number; plans: BillingPlan[] }
 export type InterviewSummary = { id: string; jobId: string | null; title: string; mode: 'SET' | 'LIVE'; answered: number; total: number; averageScore: number | null; readiness: number | null; createdAt: string }
 /** readiness 0-100; gaps = where the answers fall short of what interviewers expect at this level. */
-export type InterviewReport = { readiness: number | null; verdict: string | null; strengths: string[]; gaps: { area: string; detail: string | null }[]; focus: string[]; source: 'AI' | 'TEMPLATE' | 'POLICY' }
+export type InterviewReport = { readiness: number | null; verdict: string | null; strengths: string[]; gaps: { area: string; detail: string | null }[]; focus: string[]; source: 'AI' | 'TEMPLATE' | 'POLICY' | 'QUIT' }
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fields?: Record<string, string>) {
@@ -199,6 +199,7 @@ export function createApi(cfg: ApiConfig) {
   startInterview: (s: ({ jobId: string } | { role: string }) & { live?: boolean }) => request<InterviewSession>('POST', '/interview/sessions', s),
   answerInterviewAudio: (id: string, index: number, fd: FormData) => request<InterviewSession>('POST', `/interview/sessions/${id}/answers/${index}/audio`, fd),
   interviewViolation: (id: string, kind: 'PHONE') => request<InterviewSession>('POST', `/interview/sessions/${id}/violations`, { kind }),
+  endInterview: (id: string) => request<InterviewSession>('POST', `/interview/sessions/${id}/end`),
   interviewReport: (id: string) => request<InterviewSession>('POST', `/interview/sessions/${id}/report`),
   uploadRecording: (id: string, video: Blob) => request<InterviewSession>('PUT', `/interview/sessions/${id}/recording`, video),
   recordingFile: (id: string) => file(`/interview/sessions/${id}/recording`),
