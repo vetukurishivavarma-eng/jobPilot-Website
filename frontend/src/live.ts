@@ -46,7 +46,10 @@ export class Engine {
   async start(video: HTMLVideoElement) {
     this.stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: 320, height: 240 },
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      // echo cancellation off: it erased the interviewer's voice (played on the speaker) from the recording. Answers are
+      // recorded only while he's silent, and his spoken nudges are stripped from transcripts on the server.
+      // ponytail: room capture, so silent with headphones; mix server-side TTS audio into the recording if that matters
+      audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true },
     })
     video.srcObject = this.stream
     await video.play()
