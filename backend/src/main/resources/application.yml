@@ -65,7 +65,7 @@ jobpilot:
   # Spoken interview answers -> text (Whisper; OpenAI-compatible). Defaults to Groq with the LLM key.
   stt-url: ${STT_URL:https://api.groq.com/openai/v1}
   stt-api-key: ${STT_API_KEY:${LLM_API_KEY:}}
-  stt-model: ${STT_MODEL:whisper-large-v3-turbo}
+  stt-model: ${STT_MODEL:whisper-large-v3-turbo,whisper-large-v3}  # tried in order (separate Groq limits)
   # Paid live interviews (Razorpay). Both unset = billing off, live interviews free.
   razorpay-key-id: ${RAZORPAY_KEY_ID:}
   razorpay-key-secret: ${RAZORPAY_KEY_SECRET:}

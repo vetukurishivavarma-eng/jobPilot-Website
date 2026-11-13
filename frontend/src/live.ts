@@ -12,8 +12,12 @@ const pick = (types: string[]) => types.find(t => typeof MediaRecorder !== 'unde
 type Counts = { frames: number; away: number; eyesOff: number; tense: number; smile: number; started: number; pasted: boolean }
 const fresh = (): Counts => ({ frames: 0, away: 0, eyesOff: 0, tense: 0, smile: 0, started: Date.now(), pasted: false })
 // Looking-away thresholds. Calibration knobs: tune on real phones (degrees from the starting pose; blendshape 0..1).
-const MAX_YAW = 25, MAX_PITCH = 20, EYES_SIDE = 0.5, EYES_DOWN = 0.5
-const CALIBRATION_FRAMES = 10 // ~2.5 s at 4 checks/s: the pose they hold while the interview starts
+// Everything is measured against how they sat and looked in the first seconds: the camera is above the screen, so
+// reading the screen already reads as "eyes down" (that baseline made the first version nag people who were looking).
+const MAX_YAW = 30, MAX_PITCH = 25, EYES_SIDE = 0.35, EYES_DOWN = 0.35
+const CALIBRATION_FRAMES = 12 // ~3 s at 4 checks/s, eyes open: the pose they hold while the interview starts
+const AWAY_MS = 2500 // looking away this long before the warning
+const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
 const pct = (n: number, d: number) => (d ? Math.round((100 * n) / d) : 0)
 
 export class Engine {
@@ -42,9 +46,8 @@ export class Engine {
   private awaySince = 0
   private awayNow = false
   private goneSince = 0
-  private poseFrames = 0
-  private yaw0 = 0
-  private pitch0 = 0
+  private calib: { yaw: number; pitch: number; side: number; down: number }[] = []
+  private base: { yaw: number; pitch: number; side: number; down: number } | null = null
   private phoneHits = 0
   private phoneQuietUntil = 0
 
@@ -99,22 +102,33 @@ export class Engine {
     const lm = r.faceLandmarks?.[0]
     const bs: Record<string, number> = {}
     for (const c of r.faceBlendshapes?.[0]?.categories ?? []) bs[c.categoryName] = c.score
-    // head pose relative to how they sat at the start (a phone held low reads as "pitched" all the time)
-    let turned = false
+    // head pose from the transformation matrix (column-major 4x4; columns normalised because it carries scale)
+    let yaw = 0, pitch = 0
     const m: number[] | undefined = r.facialTransformationMatrixes?.[0]?.data
-    if (lm && m) {
-      const yaw = Math.asin(Math.max(-1, Math.min(1, -m[2]))) * 180 / Math.PI // column-major 4x4: R[2][0]
-      const pitch = Math.atan2(m[6], m[10]) * 180 / Math.PI // R[2][1], R[2][2]
-      if (this.poseFrames < CALIBRATION_FRAMES) { this.yaw0 += yaw / CALIBRATION_FRAMES; this.pitch0 += pitch / CALIBRATION_FRAMES; this.poseFrames++ }
-      else turned = Math.abs(yaw - this.yaw0) > MAX_YAW || Math.abs(pitch - this.pitch0) > MAX_PITCH
-    } else if (lm) { // no pose matrix: nose tip vs the midpoint of the outer eye corners, in eye-widths
+    if (m) {
+      const c0 = Math.hypot(m[0], m[1], m[2]) || 1, c1 = Math.hypot(m[4], m[5], m[6]) || 1, c2 = Math.hypot(m[8], m[9], m[10]) || 1
+      yaw = Math.asin(Math.max(-1, Math.min(1, -m[2] / c0))) * 180 / Math.PI
+      pitch = Math.atan2(m[6] / c1, m[10] / c2) * 180 / Math.PI
+    } else if (lm) { // no matrix: nose offset from the eye midpoint, in eye-widths, as rough degrees
       const l = lm[33], rr = lm[263], nose = lm[1]
-      turned = Math.abs((nose.x - (l.x + rr.x) / 2) / Math.max(Math.abs(rr.x - l.x), 0.01)) > 0.35
+      yaw = 90 * (nose.x - (l.x + rr.x) / 2) / Math.max(Math.abs(rr.x - l.x), 0.01)
     }
     // where the eyes point, from the blendshapes (0..1)
     const side = Math.max(((bs.eyeLookOutLeft ?? 0) + (bs.eyeLookInRight ?? 0)) / 2, ((bs.eyeLookInLeft ?? 0) + (bs.eyeLookOutRight ?? 0)) / 2)
     const down = ((bs.eyeLookDownLeft ?? 0) + (bs.eyeLookDownRight ?? 0)) / 2
-    const eyesOff = !!lm && !turned && (side > EYES_SIDE || (!this.typing && down > EYES_DOWN)) // typing means looking down
+    const blinking = ((bs.eyeBlinkLeft ?? 0) + (bs.eyeBlinkRight ?? 0)) / 2 > 0.5
+    let turned = false, eyesOff = false
+    if (lm && !this.base) { // calibrating: no warnings yet
+      if (!blinking) this.calib.push({ yaw, pitch, side, down })
+      if (this.calib.length >= CALIBRATION_FRAMES) this.base = {
+        yaw: median(this.calib.map(x => x.yaw)), pitch: median(this.calib.map(x => x.pitch)),
+        side: median(this.calib.map(x => x.side)), down: median(this.calib.map(x => x.down)),
+      }
+    } else if (lm && this.base) {
+      const b = this.base
+      turned = Math.abs(yaw - b.yaw) > MAX_YAW || Math.abs(pitch - b.pitch) > MAX_PITCH
+      eyesOff = !turned && !blinking && (side - b.side > EYES_SIDE || (!this.typing && down - b.down > EYES_DOWN)) // typing = looking down
+    }
     const away = !lm || turned || eyesOff
     const tense = ((bs.browDownLeft ?? 0) + (bs.browDownRight ?? 0)) / 2 > 0.5 || ((bs.mouthPressLeft ?? 0) + (bs.mouthPressRight ?? 0)) / 2 > 0.5
     const smile = ((bs.mouthSmileLeft ?? 0) + (bs.mouthSmileRight ?? 0)) / 2 > 0.5
@@ -132,7 +146,7 @@ export class Engine {
     else if (now - this.goneSince > 2000 && !this.goneNow) { this.goneNow = true; this.onGone() }
     if (!away) { this.awaySince = 0; if (this.awayNow) { this.awayNow = false; this.onAway(false) } }
     else if (!this.awaySince) this.awaySince = now
-    else if (now - this.awaySince > 2000 && !this.awayNow) { this.awayNow = true; this.onAway(true) }
+    else if (now - this.awaySince > AWAY_MS && !this.awayNow) { this.awayNow = true; this.onAway(true) }
   }
 
   private phoneFrame(r: any) {
