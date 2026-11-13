@@ -7,6 +7,7 @@ import { confirmDialog } from '../dialog'
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : 'Cannot reach the server')
 const INTERVIEWER = 'Arjun'
 const TOTAL = 8
+const NUDGE = 'Please look at the camera.' // the server strips this from answer transcripts (the mic hears it)
 type Phase = 'loading' | 'ready' | 'asking' | 'listening' | 'typing' | 'thinking' | 'warned' | 'finishing' | 'policy' | 'error'
 
 /**
@@ -23,6 +24,7 @@ export default function LivePage() {
   const session = useRef<InterviewSession | null>(null)
   const phonePending = useRef(false)
   const misses = useRef(0)
+  const lastNudge = useRef(0)
   const left = useRef(false) // the candidate ended it: drop any reply still in flight
   const [s, setS] = useState<InterviewSession | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
@@ -57,7 +59,14 @@ export default function LivePage() {
   async function begin() {
     setError(null)
     const e = new Engine()
-    e.onAway = setAway
+    e.onAway = a => {
+      setAway(a)
+      // said out loud while they answer, at most every 20 s; never over a question
+      if (a && (phaseRef.current === 'listening' || phaseRef.current === 'typing') && Date.now() - lastNudge.current > 20000) {
+        lastNudge.current = Date.now()
+        speak(NUDGE)
+      }
+    }
     e.onPhone = () => { phonePending.current = true; if (phaseRef.current === 'listening' || phaseRef.current === 'typing') handlePhone() }
     try { await e.start(video.current!) } catch {
       setError('JobPilot needs your camera and microphone for the interview. Allow them and try again.')

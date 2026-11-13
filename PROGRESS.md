@@ -1,6 +1,9 @@
 # JobPilot AI — Progress
 
 
+## 2026-11-13: leave a live interview (deployed, website 59aff7a / apk 4ec93a6)
+- LivePage header "End interview" (confirm) -> POST /interview/sessions/{id}/end -> ended QUIT + no-score report, recording dropped. Server also ends it (no LLM call) when a <=20-word answer matches `Interview.wantsToQuit` (mentions interview/session, "dont want this/to continue", or starts with close/end/stop/quit). Web page change, so the APK gets it without a rebuild. Not phone-tested.
+
 ## 2026-11-13: keep-awake
 - Render free cold start measured 76 s (the "hovering logo" / "server is waking up"). `.github/workflows/keep-awake.yml` (website repo only, GitHub Actions) pings /actuator/health every 10 min. Uses ~720 of the 750 free hrs/month: keep JobPilot the only always-on free service in that Render workspace.
 ## 2026-11-13: 1.3.1 RELEASED (github v1.3.1, vc10)

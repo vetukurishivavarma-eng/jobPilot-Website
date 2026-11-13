@@ -254,6 +254,8 @@ class InterviewTest {
                 .content("{\"answer\":\"I don't want this interview, close it.\"}"))
                 .andExpect(jsonPath("$.ended").value("QUIT")).andExpect(jsonPath("$.report.source").value("QUIT")).andExpect(jsonPath("$.items.length()").value(1));
         mvc().perform(post("/api/interview/sessions/" + q + "/end").header("Authorization", auth)).andExpect(jsonPath("$.ended").value("QUIT"));
+        assertEquals("I led the migration.", Interview.stripNudge("I led the Please look at the camera. migration.").replace("  ", " "));
+        assertEquals("", Interview.stripNudge("Please, look at the camera!"));
         assertTrue(Interview.wantsToQuit("Stop the interview please"));
         assertTrue(Interview.wantsToQuit("close it"));
         assertTrue(Interview.wantsToQuit("I do not want to continue"));

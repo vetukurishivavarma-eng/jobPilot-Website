@@ -232,6 +232,9 @@ public final class Interview {
             + "|\\b(don'?t|do not) want (this|the|to (do|continue|go on))"
             + "|^\\W*(please |ok |okay )?(close|end|stop|quit|exit|cancel)( it| this| now)?\\b");
 
+    private static final java.util.regex.Pattern NUDGE = java.util.regex.Pattern.compile("(?i)\\s*please,? look at the camera[.!]?");
+    static String stripNudge(String transcript) { return NUDGE.matcher(transcript).replaceAll("").strip(); }
+
     /** The candidate asked to stop ("I don't want this interview, close it"). */
     static boolean wantsToQuit(String answer) {
         return answer.split("\\s+").length <= 20 && QUIT_WORDS.matcher(answer).find();

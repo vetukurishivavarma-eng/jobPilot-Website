@@ -163,6 +163,7 @@ public class InterviewController {
         if (index < 0 || index >= c.items().size()) throw ApiException.notFound("Question");
         if (audio.getSize() > 8 * 1024 * 1024) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "TOO_LONG", "That answer is too long. Keep answers under about 4 minutes.");
         String text = stt.transcribe(audio.getBytes(), audio.getContentType());
+        if (text != null) text = Interview.stripNudge(text); // the page says "Please look at the camera." while they answer
         if (text == null) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "STT_UNAVAILABLE", "Couldn't turn your answer into text right now. Answer again, or type it.");
         if (text.isBlank()) throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "NO_SPEECH", "We couldn't hear an answer. Check your microphone and answer again.");
         Interview.Signals sig = null;
