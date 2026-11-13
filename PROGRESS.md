@@ -1,5 +1,12 @@
 # JobPilot AI — Progress
 
+## 2026-11-13: 1.3.1 RELEASED (github v1.3.1, vc10)
+- **In-app auto-update** (`mobile/src/update.ts`): on open / back to foreground (max every 6 h) reads https://api.github.com/repos/vetukurishivavarma-eng/jobPilot-apk/releases/latest; tag vX.Y.Z newer than `Constants.expoConfig.version` + an .apk asset -> themed dialog -> expo-file-system/legacy download -> content URI -> expo-intent-launcher VIEW (REQUEST_INSTALL_PACKAGES). Release = GitHub release with tag vX.Y.Z + .apk (can be made from the user's phone). Must be built on THIS PC (same signing key) and version must increase.
+- Tab bar + live-interview view pad by safe-area insets (Android 3-button nav overlapped the tabs).
+- Stock pop-ups replaced: app `src/dialog.tsx` dialog() (Alert.alert signature, DialogHost in _layout); web `frontend/src/dialog.tsx` confirmDialog() (window.confirm replacement, DialogHost in main.tsx).
+- `AnimatedLogo` (ui.tsx, built-in Animated) on sign-in + Loading.
+- Recording MP4 first (MediaRecorder video/mp4 avc1+aac), WebM fallback (web change, live on Render).
+
 ## 2026-11-13 token measurements (Render logs, one 8-question interview, thin test profile)
 - Old per-turn scoring design: 9 calls, 7,741 in / 2,498 out = ~10.2K tokens.
 - Now: 6 short question calls on Qwen (389-601 in, 32-58 out each, ~0.5 s) + 1 report call on gpt-oss-120b (REPORT_MODEL, chain logged as "LLM chain for ...") = 4,148 in / 1,129 out = ~5.3K tokens (-48%). Report 840 out (1,630 chars; rest is gpt-oss low-effort reasoning), under Groq's 1,000 output-tokens/min, and off Qwen's budget. Expect ~12K with a real profile + JD + long answers.
